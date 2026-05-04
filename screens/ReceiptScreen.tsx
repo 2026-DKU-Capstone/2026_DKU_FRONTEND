@@ -32,14 +32,52 @@ export default function ReceiptScreen({ onNext, onPrev, step = 5 }: ReceiptScree
     merchant: '', date: '', category: '', amount: '', note: '',
   });
   const [analyzing, setAnalyzing] = useState(false);
-  const [analyzed, setAnalyzed] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const [filled, setFilled] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  function mapFilledFields(filledFields: Record<string, string>): Partial<ReceiptFields> {
+    const result: Partial<ReceiptFields> = {};
+    for (const [key, value] of Object.entries(filledFields)) {
+      if (/가맹점|상호|업체|매장|점포/.test(key))        result.merchant = value;
+      else if (/거래일|날짜|일시|결제일/.test(key))       result.date = value;
+      else if (/금액|합계|총액|결제금|공급가/.test(key))  result.amount = value.replace(/[^\d,]/g, '');
+      else if (/항목|목적|내용|품목|지출/.test(key))      result.category = value;
+    }
+    return result;
+  }
+
   const tag = step === 5 ? 'STEP 3 · 증빙 업로드' : step === 6 ? 'STEP 4 · 양식 추천' : 'STEP 5 · 자동 입력';
   const title = step === 5 ? '증빙자료를 업로드하세요' : step === 6 ? '양식을 선택하세요' : '자동 입력 내용을 확인하세요';
   const desc = step === 5 ? '영수증을 업로드하면 OCR로 자동 인식합니다.' : step === 6 ? 'AI가 가장 적합한 양식을 추천합니다.' : 'AI가 입력한 내용을 확인하고 수정하세요.';
+
+  async function fillForms(evidenceId: number, formIds: number[]) {
+    setFilling(true);
+    try {
+      const res = await apiFetch(`/api/evidence/${evidenceId}/fill`, {
+        method: 'POST',
+        body: JSON.stringify({ formIds }),
+      });
+      if (res.ok) {
+        const data: { evidenceId: number; results: { formId: number; formName: string; filledFields: Record<string, string>; missingFields: string[] }[] } = await res.json();
+        const firstResult = data.results[0];
+        if (firstResult) {
+          sessionStorage.setItem('filledFields', JSON.stringify(firstResult.filledFields));
+          sessionStorage.setItem('formId', String(firstResult.formId));
+          setFields(prev => ({ ...prev, ...mapFilledFields(firstResult.filledFields) }));
+        }
+        setFilled(true);
+      } else {
+        setFilled(true); // 분석 결과만이라도 표시
+      }
+    } catch {
+      setFilled(true);
+    } finally {
+      setFilling(false);
+    }
+  }
 
   async function handleFileSelect(file: File) {
     setError('');
@@ -59,7 +97,10 @@ export default function ReceiptScreen({ onNext, onPrev, step = 5 }: ReceiptScree
         const data: { evidenceId: number; paymentType: string; extractedText: string; availableForms: AvailableForm[] } = await res.json();
         sessionStorage.setItem('evidenceId', String(data.evidenceId));
         sessionStorage.setItem('availableForms', JSON.stringify(data.availableForms));
-        setAnalyzed(true);
+
+        if (data.availableForms.length > 0) {
+          await fillForms(data.evidenceId, data.availableForms.map(f => f.formId));
+        }
       } else {
         const body = await res.json().catch(() => null);
         setError(body?.error ?? 'OCR 분석에 실패했습니다.');
@@ -111,25 +152,25 @@ export default function ReceiptScreen({ onNext, onPrev, step = 5 }: ReceiptScree
         }}>
           {/* Image area */}
           <div
-            onClick={() => !analyzing && fileInputRef.current?.click()}
+            onClick={() => !analyzing && !filling && fileInputRef.current?.click()}
             style={{
               background: '#DDE3EC', height: 180,
               position: 'relative', display: 'flex',
               alignItems: 'center', justifyContent: 'center',
-              cursor: analyzing ? 'default' : 'pointer',
+              cursor: (analyzing || filling) ? 'default' : 'pointer',
               overflow: 'hidden',
             }}
           >
             <div style={{
               position: 'absolute', top: 10, right: 10,
-              background: analyzed ? '#3A8A5C' : analyzing ? '#4A6FA5' : '#8A96A8',
+              background: filled ? '#3A8A5C' : (analyzing || filling) ? '#4A6FA5' : '#8A96A8',
               color: 'white',
               fontSize: 9, fontWeight: 700, padding: '3px 8px',
               borderRadius: 4, fontFamily: 'var(--font-mono)',
               transition: 'background 0.15s',
               zIndex: 1,
             }}>
-              {analyzed ? 'OCR 인식 완료' : analyzing ? '분석 중...' : '파일 선택'}
+              {filled ? '자동 입력 완료' : filling ? '입력 중...' : analyzing ? '분석 중...' : '파일 선택'}
             </div>
 
             {previewUrl ? (
@@ -137,7 +178,7 @@ export default function ReceiptScreen({ onNext, onPrev, step = 5 }: ReceiptScree
               <img
                 src={previewUrl}
                 alt="업로드된 영수증"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: analyzing ? 0.5 : 1 }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: (analyzing || filling) ? 0.5 : 1 }}
               />
             ) : (
               <div style={{
@@ -161,7 +202,7 @@ export default function ReceiptScreen({ onNext, onPrev, step = 5 }: ReceiptScree
               fontSize: 9, fontWeight: 600, padding: '3px 10px',
               borderRadius: 100, whiteSpace: 'nowrap',
             }}>
-              {analyzing ? 'OCR 분석 중...' : analyzed ? '이미지를 탭하여 변경' : '탭하여 파일 선택'}
+              {analyzing ? 'OCR 분석 중...' : filling ? '필드 채우는 중...' : filled ? '이미지를 탭하여 변경' : '탭하여 파일 선택'}
             </div>
           </div>
 

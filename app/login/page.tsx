@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { isAuthenticated } from '@/lib/auth';
 import LoginScreen from '@/screens/LoginScreen';
 
-export default function Page() {
+function LoginPageInner() {
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get('next') || '/group-select';
@@ -15,4 +15,12 @@ export default function Page() {
   }, [router, next]);
 
   return <LoginScreen onLogin={() => router.push(next)} />;
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  );
 }

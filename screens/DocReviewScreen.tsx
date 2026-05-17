@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import FinalCheckOverlay from '@/components/FinalCheckOverlay';
+import { apiFetch } from '@/lib/api';
+import { getGroupId } from '@/lib/group';
 
 interface FieldRow {
   key: string;
@@ -16,6 +19,7 @@ export default function DocReviewScreen() {
   const [formName, setFormName] = useState('지출결의서');
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [finalCheckOpen, setFinalCheckOpen] = useState(false);
 
   useEffect(() => {
     const filledRaw = sessionStorage.getItem('filledFields');
@@ -36,6 +40,33 @@ export default function DocReviewScreen() {
       result.push({ key: k, value: userInput[k] ?? '', isAi: false, missing: true });
     }
     setRows(result);
+
+    // 진입 시 누락된 정보(수령인 / 양식 필수 항목)가 있으면 로딩 모달을 자동으로 띄움.
+    // 부족 없으면 모달을 띄우지 않고 사용자가 평소처럼 셀을 직접 편집할 수 있게 둔다.
+    (async () => {
+      const formMissing = missing.some(k => !(userInput[k] ?? '').trim());
+
+      let payerMissing = true;
+      try {
+        const groupId = getGroupId();
+        if (groupId) {
+          const res = await apiFetch(`/api/groups/${groupId}`);
+          if (res.ok) {
+            const data = await res.json();
+            const p = data?.payerInfo;
+            payerMissing = !(
+              p &&
+              (p.name ?? '').trim() &&
+              (p.affiliation ?? '').trim() &&
+              (p.studentId ?? '').trim() &&
+              (p.phone ?? '').trim()
+            );
+          }
+        }
+      } catch { /* 조회 실패 → 부족으로 간주 */ }
+
+      if (formMissing || payerMissing) setFinalCheckOpen(true);
+    })();
   }, []);
 
   function startEdit(row: FieldRow) {
@@ -280,6 +311,12 @@ export default function DocReviewScreen() {
           >다음 → 규정 검토</button>
         </div>
       </div>
+
+      <FinalCheckOverlay
+        open={finalCheckOpen}
+        onClose={() => setFinalCheckOpen(false)}
+        onProceed={() => { setFinalCheckOpen(false); router.push('/pdf'); }}
+      />
 
       <style>{`
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }

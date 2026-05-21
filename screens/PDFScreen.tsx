@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getGroupId } from '@/lib/group';
+import { getUserInfo } from '@/lib/auth';
 
 interface UploadedPhoto {
   photoId: string;
@@ -424,7 +425,7 @@ export default function PDFScreen() {
               {[
                 { label: '문서 번호', value: docNumber, mono: true },
                 { label: '생성 일시', value: new Date().toLocaleString('ko-KR') },
-                { label: '신청자',    value: '홍길동 · 재무팀' },
+                { label: '신청자',    value: getUserInfo()?.name ?? '' },
                 { label: '총 금액',   value: `${totalAmount.toLocaleString()}원`, mono: true, bold: true },
               ].map(r => (
                 <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>

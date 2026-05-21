@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui';
 import { apiFetch } from '@/lib/api';
 import { getGroupId } from '@/lib/group';
+import { getUserInfo } from '@/lib/auth';
 
 interface MonthFile {
   name: string;
@@ -39,7 +40,6 @@ interface SummaryData {
 
 interface DashboardScreenProps {
   onNew?: () => void;
-  userName?: string;
 }
 
 type ApiStatus = 'IN_PROGRESS' | 'APPROVED' | 'REJECTED' | 'CANCELED';
@@ -161,8 +161,9 @@ function DirMonth({ year, month, open: initOpen, files }: MonthData) {
   );
 }
 
-export default function DashboardScreen({ onNew, userName = '김민준' }: DashboardScreenProps) {
+export default function DashboardScreen({ onNew }: DashboardScreenProps) {
   const router = useRouter();
+  const userName = getUserInfo()?.name ?? '';
   const dashRef = useRef<HTMLDivElement>(null);
   const [revealed, setRevealed] = useState(false);
 
@@ -435,7 +436,7 @@ export default function DashboardScreen({ onNew, userName = '김민준' }: Dashb
               안녕하세요, {userName}님
             </div>
             <div style={{ fontSize: 13, color: 'var(--gray5)' }}>
-              2025년 1월의 지출결의 현황을 확인하세요.
+              {new Date().getFullYear()}년 {new Date().getMonth() + 1}월의 지출결의 현황을 확인하세요.
             </div>
           </div>
           <button

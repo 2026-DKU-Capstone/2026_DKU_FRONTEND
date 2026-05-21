@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getUserInfo } from '@/lib/auth';
 
 interface FieldRow {
   key: string;
@@ -18,6 +19,7 @@ interface CheckItem {
 
 export default function ComplianceScreen() {
   const router = useRouter();
+  const userName = getUserInfo()?.name ?? '';
   const [rows, setRows] = useState<FieldRow[]>([]);
   const [formName, setFormName] = useState('지출결의서');
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -223,7 +225,7 @@ export default function ComplianceScreen() {
                   paddingTop: 5, fontSize: 11,
                   color: i === 0 ? 'var(--navy)' : 'var(--gray3)',
                   fontWeight: i === 0 ? 600 : 400,
-                }}>{i === 0 ? '홍길동' : '(미결재)'}</div>
+                }}>{i === 0 ? userName : '(미결재)'}</div>
               </div>
             ))}
           </div>

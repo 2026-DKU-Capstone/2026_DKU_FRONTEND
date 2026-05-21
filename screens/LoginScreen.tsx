@@ -21,7 +21,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [tab, setTab] = useState<Tab>('login');
 
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [signupForm, setSignupForm] = useState({ name: '', email: '', company: '', password: '' });
+  const [signupForm, setSignupForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -226,23 +226,13 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
             {tab === 'signup' ? (
               <div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-                  <div>
-                    <label style={fl}>이름</label>
-                    <input
-                      style={fi} placeholder="홍길동"
-                      value={signupForm.name}
-                      onChange={e => setSignupForm(f => ({ ...f, name: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label style={fl}>회사명</label>
-                    <input
-                      style={fi} placeholder="(주)가결"
-                      value={signupForm.company}
-                      onChange={e => setSignupForm(f => ({ ...f, company: e.target.value }))}
-                    />
-                  </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={fl}>이름</label>
+                  <input
+                    style={fi} placeholder="홍길동"
+                    value={signupForm.name}
+                    onChange={e => setSignupForm(f => ({ ...f, name: e.target.value }))}
+                  />
                 </div>
                 <div style={{ marginBottom: 14 }}>
                   <label style={fl}>이메일 주소</label>

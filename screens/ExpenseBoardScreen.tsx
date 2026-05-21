@@ -96,6 +96,7 @@ export default function ExpenseBoardScreen() {
 
   function selectBiz(b: Biz) {
     sessionStorage.setItem('filterBusinessName', b.name);
+    sessionStorage.setItem('approvalTab', 'group');
     router.push('/approvals');
   }
 

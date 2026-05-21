@@ -57,20 +57,26 @@ function deriveAmount(a: Approval): string {
 
 export default function ApprovalListScreen() {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>('my');
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === 'undefined') return 'my';
+    const t = sessionStorage.getItem('approvalTab');
+    if (t === 'group' || t === 'my') { sessionStorage.removeItem('approvalTab'); return t; }
+    return 'my';
+  });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [bizFilter, setBizFilter] = useState<string | null>(null);
+  const [bizFilter, setBizFilter] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const stored = sessionStorage.getItem('filterBusinessName');
+    if (stored) { sessionStorage.removeItem('filterBusinessName'); return stored; }
+    return null;
+  });
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('filterBusinessName');
-    if (stored) {
-      setBizFilter(stored);
-      sessionStorage.removeItem('filterBusinessName');
-    }
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   async function load() {

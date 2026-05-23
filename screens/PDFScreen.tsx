@@ -5,21 +5,13 @@ import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getGroupId } from '@/lib/group';
 import { getUserInfo } from '@/lib/auth';
+import { downloadDocument } from '@/lib/downloadDocument';
 
 interface UploadedPhoto {
   photoId: string;
   filePath: string;
   fileName: string;
   label: string;
-}
-
-function parseFilenameFromContentDisposition(cd: string): string | null {
-  const mStar = cd.match(/filename\*=UTF-8''([^;]+)/i);
-  if (mStar) {
-    try { return decodeURIComponent(mStar[1]); } catch { return mStar[1]; }
-  }
-  const mPlain = cd.match(/filename="?([^";]+)"?/i);
-  return mPlain ? mPlain[1] : null;
 }
 
 export default function PDFScreen() {
@@ -76,38 +68,16 @@ export default function PDFScreen() {
       const filledFields: Record<string, string> = filledFieldsRaw ? JSON.parse(filledFieldsRaw) : {};
       const userInputFieldsRaw = sessionStorage.getItem('userInputFields');
       const userInputFields: Record<string, string> = userInputFieldsRaw ? JSON.parse(userInputFieldsRaw) : {};
-      const imageFields: Record<string, string> = {};
       // 증빙서류 자체를 사진란에 자동 부착.
       // - 백엔드 resolveImageBytes는 source="evidence"를 evidence 파일 바이트로 로드.
       // - evidence가 이미지가 아니면(XLS/PDF 등) 백엔드가 자동으로 무시.
       // - 필드명 "영수증"으로 보내면 양식의 "영수증 부착(...)" 셀에 우선 매칭(백엔드 Pass 2a).
-      imageFields['영수증'] = 'evidence';
+      const imageFields: Record<string, string> = { '영수증': 'evidence' };
       // 사용자가 PhotoScreen에서 올린 사진(예: 학생증)도 함께. 같은 키면 사용자 입력이 덮어씀.
       photos.forEach(p => { imageFields[p.label] = p.filePath; });
-      const res = await apiFetch(`/api/evidence/${evidenceId}/complete`, {
-        method: 'POST',
-        body: JSON.stringify({
-          forms: [{ formId: Number(formId), filledFields, userInputFields, imageFields }],
-        }),
-      });
 
-      if (res.ok) {
-        const blob = await res.blob();
-        const cd = res.headers.get('content-disposition') ?? '';
-        const cdName = parseFilenameFromContentDisposition(cd);
-        const cdExt = cdName?.match(/\.[a-z0-9]+$/i)?.[0] ?? '';
-        const contentType = res.headers.get('content-type') ?? '';
-        const ext = contentType.includes('zip') ? '.zip' : (cdExt || '.docx');
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${formName}${ext}`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        const body = await res.json().catch(() => null);
-        setError(body?.error ?? '파일 생성에 실패했습니다.');
-      }
+      const err = await downloadDocument({ evidenceId, formId, filledFields, userInputFields, imageFields, formName });
+      if (err) setError(err);
     } catch { setError('서버에 연결할 수 없습니다.'); }
     finally { setDownloading(false); }
   }
@@ -142,6 +112,9 @@ export default function PDFScreen() {
 
       if (res.ok) {
         const data = await res.json().catch(() => null);
+        ['evidenceId', 'availableForms', 'filledFields', 'formId', 'lastStep'].forEach(
+          key => sessionStorage.removeItem(key)
+        );
         setSubmitted(true);
         if (data?.requestId) setSubmittedRequestId(data.requestId);
       }

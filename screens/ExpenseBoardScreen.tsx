@@ -1,71 +1,162 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
+import { getGroupId } from '@/lib/group';
+import { downloadDocument } from '@/lib/downloadDocument';
 
-type BizState = 'inProgress' | 'done' | 'review';
-type BizBadge = 'draft' | 'done' | 'review' | 'empty';
+type EvidenceStatus = 'draft' | 'in_progress' | 'approved' | 'rejected';
 
-interface Biz {
-  no: string;
-  name: string;
-  desc: string;
-  state: BizState;
-  badge: BizBadge;
-  count: string;
-  amount: string;
-  modified: string;
+interface EvidenceItem {
+  evidenceId: number;
+  requestId: number | null;
+  businessName: string;
+  status: EvidenceStatus;
+  fileType: string | null;
+  updatedAt: string | null;
+  createdAt: string | null;
 }
 
-const BADGE_CFG: Record<BizBadge, { label: string; bg: string; color: string }> = {
-  draft:  { label: '초안 작성중', bg: 'var(--amber-bg)',  color: 'var(--amber)' },
-  done:   { label: '완료',        bg: 'var(--green-bg)',  color: 'var(--green)' },
-  review: { label: '검토중',      bg: 'var(--blue-pale)', color: 'var(--blue)'  },
-  empty:  { label: '작성 전',     bg: 'var(--amber-bg)',  color: 'var(--amber)' },
+interface HistoryStep {
+  approverName: string;
+  roleName: string;
+  action: string;
+  comment: string | null;
+  actedAt: string | null;
+}
+
+interface ApprovalHistory {
+  requestId: number;
+  evidenceId?: number;
+  formId?: number;
+  formName?: string;
+  status: string;
+  filledFields: Record<string, string>;
+  steps: HistoryStep[];
+  editHistory: unknown[];
+}
+
+const LAST_STEP_ROUTES: Record<string, string> = {
+  '1': '/receipt',
+  '2': '/form-recommend',
+  '3': '/doc-review',
+  '4': '/compliance',
+  '5': '/pdf',
 };
 
-const STATE_TAG: Record<BizState, { label: string; bg: string; color: string }> = {
-  inProgress: { label: '진행중', bg: 'var(--blue-pale)', color: 'var(--blue)'  },
-  done:       { label: '완료',   bg: 'var(--green-bg)',  color: 'var(--green)' },
-  review:     { label: '진행중', bg: 'var(--blue-pale)', color: 'var(--blue)'  },
-};
-
-const INITIAL_BIZ: Biz[] = [
-  { no: '001', name: 'A대학 학생회비 정산', desc: '2024년도 2학기 학생회 지출결의',
-    state: 'inProgress', badge: 'draft', count: '12건', amount: '₩18,240,000', modified: '2024.12.10' },
-  { no: '002', name: 'B연구소 과제비 정산', desc: '2024년 3분기 연구과제 지출',
-    state: 'done', badge: 'done', count: '8건', amount: '₩7,540,000', modified: '2024.11.28' },
-  { no: '003', name: 'C동아리 행사비 정산', desc: '2024 동아리 축제 지출결의',
-    state: 'inProgress', badge: 'review', count: '5건', amount: '₩3,120,000', modified: '2024.12.08' },
-];
+function formatDate(s: string | null): string {
+  if (!s) return '-';
+  return s.slice(0, 10).replace(/-/g, '.');
+}
 
 export default function ExpenseBoardScreen() {
   const router = useRouter();
-  const [bizList, setBizList] = useState<Biz[]>(INITIAL_BIZ);
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [owner, setOwner] = useState('홍길동');
-  const [desc, setDesc] = useState('');
+  const [items, setItems] = useState<EvidenceItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isTopApprover, setIsTopApprover] = useState(false);
+  const [newBizOpen, setNewBizOpen] = useState(false);
+  const [bizName, setBizName] = useState('');
 
-  function addBiz() {
-    const trimmed = name.trim() || '새 사업';
-    const next: Biz = {
-      no: String(bizList.length + 1).padStart(3, '0'),
-      name: trimmed,
-      desc: desc || '',
-      state: 'inProgress', badge: 'empty',
-      count: '0건', amount: '₩0', modified: '방금 전',
-    };
-    setBizList([...bizList, next]);
-    setOpen(false);
-    setName(''); setDesc('');
-    sessionStorage.setItem('currentBusinessName', trimmed);
-    router.push('/receipt');
+  // 완료 상세 모달
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState<ApprovalHistory | null>(null);
+  const [detailError, setDetailError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
+  // 삭제 확인 모달
+  const [deleteTarget, setDeleteTarget] = useState<EvidenceItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const groupId = getGroupId();
+    if (!groupId) { setLoading(false); return; }
+
+    Promise.all([
+      apiFetch(`/api/evidence/list?groupId=${groupId}`)
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []),
+      apiFetch(`/api/groups/${groupId}/is-top-approver`)
+        .then(r => r.ok ? r.json() : { isTopApprover: false })
+        .catch(() => ({ isTopApprover: false })),
+    ]).then(([evidenceList, rankInfo]) => {
+      setItems(evidenceList);
+      setIsTopApprover(rankInfo.isTopApprover ?? false);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const visible = items.filter(i => i.status === 'draft' || i.status === 'approved');
+
+  function handleDraftClick(item: EvidenceItem) {
+    const storedEvidenceId = sessionStorage.getItem('evidenceId');
+    const lastStep = sessionStorage.getItem('lastStep');
+    if (storedEvidenceId === String(item.evidenceId) && lastStep && LAST_STEP_ROUTES[lastStep]) {
+      router.push(LAST_STEP_ROUTES[lastStep]);
+    } else {
+      // sessionStorage 데이터 없거나 다른 증빙 → 처음부터
+      sessionStorage.setItem('evidenceId', String(item.evidenceId));
+      if (item.businessName) sessionStorage.setItem('currentBusinessName', item.businessName);
+      router.push('/receipt');
+    }
   }
 
-  function selectBiz(b: Biz) {
-    sessionStorage.setItem('currentBusinessName', b.name);
+  async function handleApprovedClick(item: EvidenceItem) {
+    if (!item.requestId) return;
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailData(null);
+    setDetailError('');
+    setDownloadError('');
+    try {
+      const res = await apiFetch(`/api/approvals/${item.requestId}/history`);
+      if (res.ok) setDetailData(await res.json());
+      else setDetailError('상세 정보를 불러오지 못했습니다.');
+    } catch { setDetailError('서버에 연결할 수 없습니다.'); }
+    finally { setDetailLoading(false); }
+  }
+
+  async function handleDownload() {
+    if (!detailData?.evidenceId || !detailData?.formId) {
+      setDownloadError('증빙 정보가 없어 다운로드할 수 없습니다.');
+      return;
+    }
+    setDownloading(true); setDownloadError('');
+    try {
+      const err = await downloadDocument({
+        evidenceId: detailData.evidenceId,
+        formId: detailData.formId,
+        filledFields: detailData.filledFields,
+        formName: detailData.formName ?? '문서',
+      });
+      if (err) setDownloadError(err);
+    } catch { setDownloadError('서버에 연결할 수 없습니다.'); }
+    finally { setDownloading(false); }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget?.requestId) return;
+    setDeleting(true);
+    try {
+      const res = await apiFetch(`/api/approvals/${deleteTarget.requestId}`, { method: 'DELETE' });
+      if (res.ok || res.status === 204) {
+        setItems(prev => prev.filter(i => i.evidenceId !== deleteTarget.evidenceId));
+        setDeleteTarget(null);
+      } else {
+        const b = await res.json().catch(() => null);
+        alert(b?.error ?? '삭제에 실패했습니다.');
+      }
+    } catch { alert('서버에 연결할 수 없습니다.'); }
+    finally { setDeleting(false); }
+  }
+
+  function startBiz() {
+    if (!bizName.trim()) return;
+    sessionStorage.setItem('currentBusinessName', bizName.trim());
+    setNewBizOpen(false);
+    setBizName('');
     router.push('/receipt');
   }
 
@@ -80,30 +171,25 @@ export default function ExpenseBoardScreen() {
 
   return (
     <div style={{ fontFamily: 'var(--font-ui)', padding: '28px 32px', color: 'var(--navy)' }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>지출결의</div>
-          <div style={{ fontSize: 13, color: 'var(--gray4)' }}>사업별 지출결의를 관리합니다</div>
+          <div style={{ fontSize: 13, color: 'var(--gray4)' }}>작성 중이거나 완료된 지출결의를 관리합니다</div>
         </div>
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => setNewBizOpen(true)}
           style={{
             background: 'var(--navy)', color: '#fff', border: 'none',
             borderRadius: 6, padding: '9px 20px',
             fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
           }}
-        >+ 사업 추가</button>
+        >+ 새 지출결의</button>
       </div>
 
-      <div style={{
-        background: '#fff', borderRadius: 12, border: '1px solid var(--gray2)', overflow: 'hidden',
-      }}>
-        {/* Head */}
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--gray2)', overflow: 'hidden' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '60px 1fr 120px 80px 130px 100px',
+          gridTemplateColumns: isTopApprover ? '60px 1fr 120px 100px 50px' : '60px 1fr 120px 100px',
           alignItems: 'center', gap: 12,
           padding: '14px 20px',
           borderBottom: '1px solid var(--gray1)',
@@ -111,38 +197,46 @@ export default function ExpenseBoardScreen() {
           fontSize: 10, fontWeight: 700, color: 'var(--gray4)',
           letterSpacing: '0.3px', textTransform: 'uppercase',
         }}>
-          <div>번호</div><div>사업명</div><div>상태</div><div>건수</div><div>총 금액</div><div>최근 수정</div>
+          <div>번호</div>
+          <div>사업명</div>
+          <div>상태</div>
+          <div>최근 수정</div>
+          {isTopApprover && <div></div>}
         </div>
 
-        {/* Rows */}
-        {bizList.map((b, i) => {
-          const stateCfg = STATE_TAG[b.state];
-          const badgeCfg = BADGE_CFG[b.badge];
+        {loading ? (
+          <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--gray4)' }}>
+            불러오는 중...
+          </div>
+        ) : visible.length === 0 ? (
+          <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--gray4)' }}>
+            등록된 지출결의가 없습니다. 새 지출결의를 시작해 보세요.
+          </div>
+        ) : visible.map((item, i) => {
+          const isDraft = item.status === 'draft';
+          const badgeCfg = isDraft
+            ? { label: '작성중', bg: 'var(--amber-bg)', color: 'var(--amber)' }
+            : { label: '완료', bg: 'var(--green-bg)', color: 'var(--green)' };
           return (
             <div
-              key={b.no}
-              onClick={() => selectBiz(b)}
+              key={item.evidenceId}
+              onClick={() => isDraft ? handleDraftClick(item) : handleApprovedClick(item)}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '60px 1fr 120px 80px 130px 100px',
+                gridTemplateColumns: isTopApprover ? '60px 1fr 120px 100px 50px' : '60px 1fr 120px 100px',
                 alignItems: 'center', gap: 12,
                 padding: '14px 20px',
-                borderBottom: i === bizList.length - 1 ? 'none' : '1px solid var(--gray1)',
+                borderBottom: i === visible.length - 1 ? 'none' : '1px solid var(--gray1)',
                 cursor: 'pointer', transition: 'background .12s',
               }}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--blue-pale)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <div style={{ fontSize: 11, color: 'var(--gray4)' }}>{b.no}</div>
-              <div>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  background: stateCfg.bg, color: stateCfg.color,
-                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 100,
-                  marginRight: 8,
-                }}>● {stateCfg.label}</span>
-                <strong style={{ fontSize: 13 }}>{b.name}</strong>
-                {b.desc && <div style={{ fontSize: 11, color: 'var(--gray4)', marginTop: 2 }}>{b.desc}</div>}
+              <div style={{ fontSize: 11, color: 'var(--gray4)', fontFamily: 'var(--font-mono)' }}>
+                {String(i + 1).padStart(3, '0')}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
+                {item.businessName || '(사업명 없음)'}
               </div>
               <div>
                 <span style={{
@@ -151,63 +245,123 @@ export default function ExpenseBoardScreen() {
                   fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 100,
                 }}>{badgeCfg.label}</span>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--gray5)' }}>{b.count}</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{b.amount}</div>
-              <div style={{ fontSize: 11, color: 'var(--gray4)' }}>{b.modified}</div>
+              <div style={{ fontSize: 11, color: 'var(--gray4)' }}>
+                {formatDate(item.updatedAt ?? item.createdAt)}
+              </div>
+              {isTopApprover && (
+                <div onClick={e => e.stopPropagation()}>
+                  {item.requestId && (
+                    <button
+                      onClick={() => setDeleteTarget(item)}
+                      style={{
+                        background: 'none', border: '1px solid var(--red)',
+                        color: 'var(--red)', borderRadius: 4,
+                        padding: '2px 8px', fontSize: 10, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                    >삭제</button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} width={400}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>새 사업 추가</div>
-        <div style={{ fontSize: 12, color: 'var(--gray4)', marginBottom: 18 }}>
-          지출결의를 관리할 사업명을 입력해 주세요
-        </div>
-        <div style={{ marginBottom: 12 }}>
+      {/* 새 지출결의 모달 */}
+      <Modal open={newBizOpen} onClose={() => setNewBizOpen(false)} width={400}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>새 지출결의</div>
+        <div style={{ fontSize: 12, color: 'var(--gray4)', marginBottom: 18 }}>사업명을 입력해 주세요</div>
+        <div style={{ marginBottom: 20 }}>
           <label style={fl}>사업명 <span style={{ color: 'var(--red)' }}>*</span></label>
           <input
-            style={fi}
-            placeholder="예: 2024 동아리 행사비 정산"
-            value={name}
-            onChange={e => setName(e.target.value)}
+            style={fi} placeholder="예: 2024 동아리 행사비 정산"
+            value={bizName} onChange={e => setBizName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && startBiz()}
           />
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={fl}>담당자</label>
-          <input
-            style={fi}
-            placeholder="홍길동"
-            value={owner}
-            onChange={e => setOwner(e.target.value)}
-          />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setNewBizOpen(false)} style={{ flex: 1, background: 'var(--gray2)', color: 'var(--gray5)', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
+          <button onClick={startBiz} disabled={!bizName.trim()} style={{ flex: 1, background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: !bizName.trim() ? 0.5 : 1 }}>시작</button>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={fl}>설명</label>
-          <textarea
-            style={{ ...fi, height: 72, resize: 'vertical' }}
-            placeholder="사업 관련 간략한 설명"
-            value={desc}
-            onChange={e => setDesc(e.target.value)}
-          />
+      </Modal>
+
+      {/* 완료 상세 모달 */}
+      <Modal open={detailOpen} onClose={() => { setDetailOpen(false); setDetailData(null); }} width={560}>
+        {detailLoading ? (
+          <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--gray4)' }}>불러오는 중...</div>
+        ) : detailError ? (
+          <div style={{ padding: 20, fontSize: 13, color: 'var(--red)' }}>{detailError}</div>
+        ) : detailData ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--navy)' }}>
+                {detailData.formName ?? '완료된 결재'}
+              </div>
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                style={{
+                  background: 'var(--navy)', color: '#fff', border: 'none',
+                  borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                  cursor: downloading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  opacity: downloading ? 0.7 : 1,
+                }}
+              >{downloading ? '생성 중...' : '문서 다운로드'}</button>
+            </div>
+
+            {downloadError && (
+              <div style={{ fontSize: 12, color: 'var(--red)', background: 'var(--red-bg)', border: '1px solid #F5C6C6', borderRadius: 6, padding: '6px 10px', marginBottom: 12 }}>
+                {downloadError}
+              </div>
+            )}
+
+            {/* 필드 테이블 */}
+            <div style={{ border: '1px solid var(--gray2)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', padding: '10px 14px', background: 'var(--gray1)', borderBottom: '1px solid var(--gray2)' }}>결재 내용</div>
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                {Object.entries(detailData.filledFields).map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', borderBottom: '1px solid var(--gray1)' }}>
+                    <div style={{ width: 110, padding: '8px 12px', fontSize: 11, fontWeight: 600, background: 'var(--gray1)', color: 'var(--gray4)', borderRight: '1px solid var(--gray2)', flexShrink: 0 }}>{k}</div>
+                    <div style={{ flex: 1, padding: '8px 14px', fontSize: 12, color: 'var(--navy)' }}>{v || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 결재 이력 */}
+            <div style={{ border: '1px solid var(--gray2)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', padding: '10px 14px', background: 'var(--gray1)', borderBottom: '1px solid var(--gray2)' }}>결재 이력</div>
+              {detailData.steps.map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderBottom: i === detailData.steps.length - 1 ? 'none' : '1px solid var(--gray1)' }}>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, background: s.action === 'APPROVED' ? 'var(--green-bg)' : s.action === 'REJECTED' ? 'var(--red-bg)' : 'var(--gray2)', color: s.action === 'APPROVED' ? 'var(--green)' : s.action === 'REJECTED' ? 'var(--red)' : 'var(--gray4)' }}>
+                    {s.action === 'APPROVED' ? '✓' : s.action === 'REJECTED' ? '✕' : i + 1}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)' }}>{s.approverName}</span>
+                      <span style={{ fontSize: 10, color: 'var(--gray4)' }}>{s.roleName}</span>
+                    </div>
+                    {s.comment && <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 2 }}>{s.comment}</div>}
+                    {s.actedAt && <div style={{ fontSize: 10, color: 'var(--gray4)', fontFamily: 'var(--font-mono)' }}>{s.actedAt.replace('T', ' ').slice(0, 16)}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </Modal>
+
+      {/* 삭제 확인 모달 */}
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} width={400}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>결재 삭제</div>
+        <div style={{ fontSize: 13, color: 'var(--gray5)', marginBottom: 20 }}>
+          <strong style={{ color: 'var(--navy)' }}>{deleteTarget?.businessName}</strong>의 결재 요청을 삭제합니다.<br />
+          이 작업은 되돌릴 수 없습니다.
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button
-            onClick={() => setOpen(false)}
-            style={{
-              flex: 1, background: 'var(--gray2)', color: 'var(--gray5)',
-              border: 'none', borderRadius: 6, padding: '9px 20px',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >취소</button>
-          <button
-            onClick={addBiz}
-            style={{
-              flex: 1, background: 'var(--navy)', color: '#fff',
-              border: 'none', borderRadius: 6, padding: '9px 20px',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >사업 추가</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setDeleteTarget(null)} style={{ flex: 1, background: 'var(--gray2)', color: 'var(--gray5)', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
+          <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: deleting ? 0.7 : 1 }}>{deleting ? '삭제 중...' : '삭제'}</button>
         </div>
       </Modal>
     </div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui';
 import { apiFetch } from '@/lib/api';
 import { getGroupId } from '@/lib/group';
+import { getUserInfo } from '@/lib/auth';
 
 interface MonthFile {
   name: string;
@@ -39,7 +40,6 @@ interface SummaryData {
 
 interface DashboardScreenProps {
   onNew?: () => void;
-  userName?: string;
 }
 
 type ApiStatus = 'IN_PROGRESS' | 'APPROVED' | 'REJECTED' | 'CANCELED';
@@ -161,8 +161,9 @@ function DirMonth({ year, month, open: initOpen, files }: MonthData) {
   );
 }
 
-export default function DashboardScreen({ onNew, userName = '김민준' }: DashboardScreenProps) {
+export default function DashboardScreen({ onNew }: DashboardScreenProps) {
   const router = useRouter();
+  const userName = getUserInfo()?.name ?? '';
   const dashRef = useRef<HTMLDivElement>(null);
   const [revealed, setRevealed] = useState(false);
 
@@ -170,6 +171,7 @@ export default function DashboardScreen({ onNew, userName = '김민준' }: Dashb
   const [months, setMonths] = useState<MonthData[]>(MOCK_MONTHS);
   const [submissions, setSubmissions] = useState<Submission[]>(MOCK_SUBMISSIONS);
   const [counts, setCounts] = useState<{ review: number; approved: number; rejected: number }>({ review: 1, approved: 3, rejected: 1 });
+  const [hasPolicies, setHasPolicies] = useState(false);
 
   useEffect(() => {
     const el = dashRef.current;
@@ -190,6 +192,11 @@ export default function DashboardScreen({ onNew, userName = '김민준' }: Dashb
       .then(r => r.ok ? r.json() : null)
       .then((data: SummaryData | null) => { if (data) setSummary(data); })
       .catch(() => { /* 모킹 폴백 유지 */ });
+
+    apiFetch(`/api/policies${q}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: unknown[] | null) => { if (data) setHasPolicies(data.length > 0); })
+      .catch(() => { /* 폴백 유지 */ });
 
     apiFetch(`/api/dashboard/monthly-directory${q}`)
       .then(r => r.ok ? r.json() : null)
@@ -228,7 +235,7 @@ export default function DashboardScreen({ onNew, userName = '김민준' }: Dashb
   }, []);
 
   const QUICK = [
-    { title: '규정책 업로드', badge: '!', badgeBg: 'var(--red)', route: '/regulation',
+    { title: '규정책 업로드', badge: hasPolicies ? '✓' : '!', badgeBg: hasPolicies ? 'var(--green)' : 'var(--red)', route: '/regulation',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
           <rect x="5" y="3" width="14" height="18" rx="2" stroke="var(--navy)" strokeWidth="1.5" />
@@ -429,7 +436,7 @@ export default function DashboardScreen({ onNew, userName = '김민준' }: Dashb
               안녕하세요, {userName}님
             </div>
             <div style={{ fontSize: 13, color: 'var(--gray5)' }}>
-              2025년 1월의 지출결의 현황을 확인하세요.
+              {new Date().getFullYear()}년 {new Date().getMonth() + 1}월의 지출결의 현황을 확인하세요.
             </div>
           </div>
           <button

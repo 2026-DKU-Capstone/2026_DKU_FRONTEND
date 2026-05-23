@@ -65,9 +65,8 @@ export default function FormRecommendScreen() {
     finally { setSubmitting(false); }
   }
 
-  function getScore(f: AvailableForm, idx: number): number {
-    if (typeof f.matchScore === 'number') return Math.round(f.matchScore * 100);
-    return [98, 82, 71, 60][idx] ?? 50;
+  function getScore(f: AvailableForm): number {
+    return Math.round((f.matchScore ?? 0) * 100);
   }
 
   return (
@@ -121,7 +120,7 @@ export default function FormRecommendScreen() {
               : idx === 1
               ? { bg: 'var(--blue-pale)', color: 'var(--blue)' }
               : { bg: 'var(--gray2)', color: 'var(--gray4)' };
-            const score = getScore(f, idx);
+            const score = getScore(f);
             const scoreBadge = score >= 90
               ? { bg: 'var(--green-bg)', color: 'var(--green)' }
               : { bg: 'var(--gray2)', color: 'var(--gray4)' };

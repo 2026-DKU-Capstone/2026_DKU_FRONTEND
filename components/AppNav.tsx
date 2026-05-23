@@ -34,13 +34,14 @@ const MENU_MAP: Record<string, string> = {
   '/regulation':      '규정관리',
   '/upload':          '규정관리',
   '/forms':           '양식지',
-  '/approvals':       '지출결의',
+  '/approvals':       '결재',
 };
 
 export default function AppNav() {
   const pathname = usePathname();
   const currentStep = STEP_MAP[pathname];
-  const activeMenu = MENU_MAP[pathname] ?? '대시보드';
+  const activeMenu = MENU_MAP[pathname]
+    ?? (pathname.startsWith('/approvals') ? '결재' : '대시보드');
   const isWorkflow = currentStep !== undefined;
   const [workspaceName, setWorkspaceName] = useState<string>('내 워크스페이스');
   const [bizName, setBizName] = useState<string>('지출결의서 작성 플로우');

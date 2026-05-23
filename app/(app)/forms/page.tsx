@@ -7,24 +7,22 @@ import { getGroupId } from '@/lib/group';
 interface FormItem {
   formId: number;
   formName: string;
+  description?: string;
   paymentType: string;
   fields: string[];
+  generatedFields?: string[];
   createdAt: string;
   fileName?: string;
   active?: boolean;
 }
 
 interface RecentReport {
+  evidenceId: number;
   title: string;
   createdAt: string;
-  meta: string;
+  fileType: string | null;
+  itemCount: number | null;
 }
-
-const MOCK_REPORTS: RecentReport[] = [
-  { title: '2024년 12월 지출결의 보고서', createdAt: '2024.12.10', meta: 'PDF · 27건' },
-  { title: 'Q4 지출 분석 리포트',         createdAt: '2024.12.08', meta: 'XLSX' },
-  { title: '11월 출장비 정산 내역',       createdAt: '2024.11.30', meta: 'PDF · 15건' },
-];
 
 const EXT_COLORS: Record<string, { bg: string; color: string }> = {
   PDF:  { bg: 'var(--red-bg)',     color: 'var(--red)'  },
@@ -48,8 +46,40 @@ export default function FormsPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editTarget, setEditTarget] = useState<FormItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [reports, setReports] = useState<RecentReport[]>([]);
+  const [downloading, setDownloading] = useState<number | null>(null);
 
-  useEffect(() => { loadForms(); }, []);
+  useEffect(() => { loadForms(); loadReports(); }, []);
+
+  async function loadReports() {
+    try {
+      const groupId = getGroupId();
+      const res = await apiFetch(`/api/evidence/list?status=approved${groupId ? `&groupId=${groupId}` : ''}`);
+      if (res.ok) setReports(await res.json());
+    } catch { /* 빈 상태 유지 */ }
+  }
+
+  async function handleReportDownload(evidenceId: number) {
+    setDownloading(evidenceId);
+    try {
+      const res = await apiFetch(`/api/evidence/${evidenceId}/complete`, { method: 'POST', body: JSON.stringify({ forms: [] }) });
+      if (res.ok) {
+        const blob = await res.blob();
+        const cd = res.headers.get('content-disposition') ?? '';
+        const mStar = cd.match(/filename\*=UTF-8''([^;]+)/i);
+        const mPlain = cd.match(/filename="?([^";]+)"?/i);
+        const filename = mStar ? decodeURIComponent(mStar[1]) : (mPlain?.[1] ?? `문서_${evidenceId}`);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch { /* 무시 */ }
+    finally { setDownloading(null); }
+  }
 
   async function loadForms() {
     try {
@@ -78,6 +108,28 @@ export default function FormsPage() {
       }
     } catch { setError('서버에 연결할 수 없습니다.'); }
     finally { setUploading(false); }
+  }
+
+  async function handleDelete(formId: number) {
+    if (!confirm('양식지를 삭제하시겠습니까?')) return;
+    const res = await apiFetch(`/api/forms/${formId}`, { method: 'DELETE' });
+    if (res.status === 204 || res.ok) setForms(prev => prev.filter(f => f.formId !== formId));
+  }
+
+  async function handleEditSave() {
+    if (!editTarget || !editName.trim()) return;
+    setEditSaving(true);
+    try {
+      const res = await apiFetch(`/api/forms/${editTarget.formId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ formName: editName.trim() }),
+      });
+      if (res.ok) {
+        const updated: FormItem = await res.json();
+        setForms(prev => prev.map(f => f.formId === updated.formId ? updated : f));
+        setEditTarget(null);
+      }
+    } finally { setEditSaving(false); }
   }
 
   return (
@@ -213,12 +265,22 @@ export default function FormsPage() {
                       background: active ? 'var(--green-bg)' : 'var(--gray2)',
                       color: active ? 'var(--green)' : 'var(--gray4)',
                     }}>{active ? '활성' : '비활성'}</span>
-                    <button style={{
-                      background: 'var(--gray2)', color: 'var(--gray5)',
-                      border: 'none', borderRadius: 6,
-                      padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>수정</button>
+                    <button
+                      onClick={e => { e.stopPropagation(); setEditTarget(f); setEditName(f.formName); }}
+                      style={{
+                        background: 'var(--gray2)', color: 'var(--gray5)',
+                        border: 'none', borderRadius: 6,
+                        padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}>수정</button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDelete(f.formId); }}
+                      style={{
+                        background: 'var(--red-bg)', color: 'var(--red)',
+                        border: 'none', borderRadius: 6,
+                        padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}>삭제</button>
                   </div>
                 );
               })
@@ -229,31 +291,90 @@ export default function FormsPage() {
         {/* 우: 최근 생성 보고서 */}
         <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--gray2)', padding: '20px 22px' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)', marginBottom: 14 }}>최근 생성 보고서</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {MOCK_REPORTS.map((r, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: 12, background: 'var(--gray1)', borderRadius: 9,
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: 12, fontWeight: 600, color: 'var(--navy)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{r.title}</div>
-                  <div style={{ fontSize: 10, color: 'var(--gray4)', marginTop: 2 }}>
-                    생성일 {r.createdAt} · {r.meta}
+          {reports.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--gray4)', padding: '16px 0', textAlign: 'center' }}>
+              완료된 보고서가 없습니다.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {reports.map(r => {
+                const meta = [r.fileType, r.itemCount != null ? `${r.itemCount}건` : null].filter(Boolean).join(' · ');
+                return (
+                  <div key={r.evidenceId} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: 12, background: 'var(--gray1)', borderRadius: 9,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 12, fontWeight: 600, color: 'var(--navy)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{r.title}</div>
+                      <div style={{ fontSize: 10, color: 'var(--gray4)', marginTop: 2 }}>
+                        생성일 {formatDate(r.createdAt)}{meta ? ` · ${meta}` : ''}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleReportDownload(r.evidenceId)}
+                      disabled={downloading === r.evidenceId}
+                      style={{
+                        background: 'var(--navy)', color: '#fff', border: 'none',
+                        borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                        cursor: downloading === r.evidenceId ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit', flexShrink: 0,
+                        opacity: downloading === r.evidenceId ? 0.7 : 1,
+                      }}
+                    >{downloading === r.evidenceId ? '생성 중...' : '다운로드'}</button>
                   </div>
-                </div>
-                <button style={{
-                  background: 'var(--navy)', color: '#fff', border: 'none',
-                  borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-                }}>다운로드</button>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* 수정 모달 */}
+      {editTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500,
+        }} onClick={() => setEditTarget(null)}>
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: 24, width: 360,
+            boxShadow: '0 12px 32px rgba(28,43,74,.18)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 16 }}>양식지 이름 수정</div>
+            <input
+              style={{
+                width: '100%', border: '1px solid var(--gray2)', borderRadius: 6,
+                padding: '9px 12px', fontSize: 13, fontFamily: 'inherit',
+                color: 'var(--navy)', outline: 'none', marginBottom: 16,
+              }}
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleEditSave()}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setEditTarget(null)}
+                style={{
+                  flex: 1, background: 'var(--gray2)', color: 'var(--gray5)',
+                  border: 'none', borderRadius: 6, padding: '9px 0',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}>취소</button>
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving || !editName.trim()}
+                style={{
+                  flex: 1, background: 'var(--navy)', color: '#fff',
+                  border: 'none', borderRadius: 6, padding: '9px 0',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                  opacity: editSaving || !editName.trim() ? 0.5 : 1,
+                }}>{editSaving ? '저장 중...' : '저장'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

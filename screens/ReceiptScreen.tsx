@@ -40,9 +40,10 @@ export default function ReceiptScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePicked = (picked: FileList | null) => {
-    if (!picked) return;
-    const arr = Array.from(picked).map(f => ({ file: f, ext: getExt(f.name), size: f.size }));
-    setFiles(prev => [...prev, ...arr]);
+    if (!picked || picked.length === 0) return;
+    // 1개씩만 작성 (#9): 새로 고르면 기존 파일을 교체
+    const f = picked[0];
+    setFiles([{ file: f, ext: getExt(f.name), size: f.size }]);
   };
 
   const removeFile = (idx: number) => {
@@ -86,7 +87,6 @@ export default function ReceiptScreen() {
       <input
         ref={fileInputRef}
         type="file"
-        multiple
         accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
         style={{ display: 'none' }}
         onChange={e => { handlePicked(e.target.files); e.target.value = ''; }}
@@ -125,6 +125,8 @@ export default function ReceiptScreen() {
             transform: dragging ? 'translateY(-1px)' : 'none',
           }}
         >
+          {files.length === 0 ? (
+          <>
           {/* Paper illustration */}
           <div style={{ width: 200, height: 140, margin: '0 auto 28px', position: 'relative' }}>
             <div style={{
@@ -172,7 +174,7 @@ export default function ReceiptScreen() {
             파일을 끌어다 놓거나 클릭해서 업로드하세요
           </div>
           <div style={{ fontSize: 13, color: 'var(--gray5)', marginBottom: 24 }}>
-            한 번에 여러 파일을 업로드할 수 있어요
+            지금은 1개씩 작성하고, 완료 후 추가 작성이 가능합니다
           </div>
           <div style={{ display: 'inline-flex', gap: 10 }}>
             <button
@@ -210,6 +212,65 @@ export default function ReceiptScreen() {
             ))}
             <span>최대 20MB / 파일</span>
           </div>
+          </>
+          ) : (
+          /* 파일 선택 후: 드롭존이 파일 목록 카드로 전환 (#1) */
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left' }}
+          >
+            {files.map((f, i) => {
+              const c = EXT_COLORS[f.ext] ?? { bg: 'var(--gray1)', color: 'var(--gray4)' };
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  background: '#fff', border: '1px solid var(--gray2)',
+                  borderRadius: 12, padding: '14px 18px',
+                }}>
+                  <div style={{
+                    width: 38, height: 46, borderRadius: 6,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 800,
+                    background: c.bg, color: c.color, flexShrink: 0,
+                  }}>{f.ext}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 600, color: 'var(--navy)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{f.file.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray4)', fontFamily: 'var(--font-mono)' }}>
+                      {(f.size / 1024).toFixed(0)}KB · 업로드 완료
+                    </div>
+                    <div style={{
+                      height: 4, background: 'var(--gray2)', borderRadius: 100,
+                      marginTop: 6, overflow: 'hidden',
+                    }}>
+                      <div style={{ height: '100%', background: 'var(--green)', borderRadius: 100, width: '100%' }} />
+                    </div>
+                  </div>
+                  <span style={{ color: 'var(--green)', fontWeight: 700, fontSize: 18 }}>✓</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); removeFile(i); }}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--gray3)',
+                      cursor: 'pointer', fontSize: 15, fontFamily: 'inherit',
+                    }}
+                  >✕</button>
+                </div>
+              );
+            })}
+            <button
+              onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
+              style={{
+                alignSelf: 'center', marginTop: 4,
+                background: '#fff', color: 'var(--navy)',
+                border: '1.5px solid var(--gray2)', borderRadius: 10,
+                padding: '9px 18px', fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >다른 파일 선택</button>
+          </div>
+          )}
         </div>
 
         {error && (
@@ -251,52 +312,6 @@ export default function ReceiptScreen() {
             </div>
           ))}
         </div>
-
-        {/* 업로드된 파일 목록 */}
-        {files.length > 0 && (
-          <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {files.map((f, i) => {
-              const c = EXT_COLORS[f.ext] ?? { bg: 'var(--gray1)', color: 'var(--gray4)' };
-              return (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  background: '#fff', border: '1px solid var(--gray2)',
-                  borderRadius: 12, padding: '14px 18px',
-                }}>
-                  <div style={{
-                    width: 38, height: 46, borderRadius: 6,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 800,
-                    background: c.bg, color: c.color, flexShrink: 0,
-                  }}>{f.ext}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 600, color: 'var(--navy)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>{f.file.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--gray4)', fontFamily: 'var(--font-mono)' }}>
-                      {(f.size / 1024).toFixed(0)}KB · 업로드 완료
-                    </div>
-                    <div style={{
-                      height: 4, background: 'var(--gray2)', borderRadius: 100,
-                      marginTop: 6, overflow: 'hidden',
-                    }}>
-                      <div style={{ height: '100%', background: 'var(--green)', borderRadius: 100, width: '100%' }} />
-                    </div>
-                  </div>
-                  <span style={{ color: 'var(--green)', fontWeight: 700, fontSize: 18 }}>✓</span>
-                  <button
-                    onClick={() => removeFile(i)}
-                    style={{
-                      background: 'none', border: 'none', color: 'var(--gray3)',
-                      cursor: 'pointer', fontSize: 15, fontFamily: 'inherit',
-                    }}
-                  >✕</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
 
         {/* Bottom bar */}
         <div style={{

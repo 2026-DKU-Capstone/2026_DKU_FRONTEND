@@ -10,12 +10,13 @@ interface GNBProps {
   workspaceName?: string;
 }
 
-const MENUS = ['대시보드', '지출결의', '규정관리', '양식지'] as const;
+const MENUS = ['대시보드', '지출결의', '결재', '규정관리', '양식지'] as const;
 type Menu = typeof MENUS[number];
 
 const MENU_ROUTES: Record<Menu, string> = {
   '대시보드': '/dashboard',
   '지출결의': '/expense-board',
+  '결재':     '/approvals',
   '규정관리': '/regulation',
   '양식지':   '/forms',
 };

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
-import { getGroupId } from '@/lib/group';
+import { getUserInfo } from '@/lib/auth';
 
 interface Step {
   approverName: string;
@@ -23,9 +23,10 @@ interface Approval {
   createdAt: string;
   updatedAt: string;
   businessName?: string;
+  formName?: string;
 }
 
-type Tab = 'my' | 'group';
+type Tab = 'my' | 'pending';
 type StatusFilter = 'ALL' | 'IN_PROGRESS' | 'APPROVED' | 'REJECTED';
 
 const STATUS_CFG: Record<Approval['status'], { label: string; bg: string; color: string }> = {
@@ -40,8 +41,7 @@ function formatDate(s: string) {
 }
 
 function deriveTitle(a: Approval): string {
-  const fields = a.filledFields ?? {};
-  return fields['사업명'] || fields['지출명'] || fields['제목'] || `결재 #${a.requestId}`;
+  return a.businessName || a.formName || `결재 #${a.requestId}`;
 }
 
 function deriveAmount(a: Approval): string {
@@ -57,36 +57,19 @@ function deriveAmount(a: Approval): string {
 
 export default function ApprovalListScreen() {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>(() => {
-    if (typeof window === 'undefined') return 'my';
-    const t = sessionStorage.getItem('approvalTab');
-    if (t === 'group' || t === 'my') { sessionStorage.removeItem('approvalTab'); return t; }
-    return 'my';
-  });
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [tab, setTab] = useState<Tab>('my');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('IN_PROGRESS');
+  const [search, setSearch] = useState('');
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [bizFilter, setBizFilter] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const stored = sessionStorage.getItem('filterBusinessName');
-    if (stored) { sessionStorage.removeItem('filterBusinessName'); return stored; }
-    return null;
-  });
 
-  useEffect(() => {
-    load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tab]);
 
   async function load() {
     setLoading(true); setError('');
     try {
-      const groupId = getGroupId();
-      const url = tab === 'my'
-        ? '/api/approvals/my'
-        : groupId ? `/api/approvals/group/${groupId}` : null;
-      if (!url) { setError('그룹이 선택되지 않았습니다.'); setLoading(false); return; }
+      const url = tab === 'my' ? '/api/approvals/my' : '/api/approvals/pending';
       const res = await apiFetch(url);
       if (res.ok) setApprovals(await res.json());
       else setError('목록을 불러오지 못했습니다.');
@@ -95,46 +78,53 @@ export default function ApprovalListScreen() {
   }
 
   const filtered = approvals
-    .filter(a => statusFilter === 'ALL' || a.status === statusFilter)
-    .filter(a => !bizFilter || a.businessName === bizFilter);
+    .filter(a => tab === 'pending' || statusFilter === 'ALL' || a.status === statusFilter)
+    .filter(a => {
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      return deriveTitle(a).toLowerCase().includes(q) || (a.businessName ?? '').toLowerCase().includes(q);
+    });
 
   const counts = approvals.reduce((acc, a) => {
     acc[a.status] = (acc[a.status] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
+  const me = getUserInfo();
+
   return (
     <div style={{ fontFamily: 'var(--font-ui)', padding: '28px 32px', color: 'var(--navy)' }}>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>결재 목록</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>결재</div>
         <div style={{ fontSize: 13, color: 'var(--gray4)' }}>
-          제출한 결재와 그룹 내 결재 요청을 관리합니다.
+          {tab === 'my' ? '내가 제출한 결재 요청을 확인합니다.' : '내가 처리해야 할 결재 요청입니다.'}
         </div>
       </div>
 
       {/* 탭 */}
-      <div style={{
-        display: 'flex', borderBottom: '1px solid var(--gray2)', marginBottom: 16,
-      }}>
-        {(['my', 'group'] as const).map(t => (
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--gray2)', marginBottom: 16 }}>
+        {([
+          { key: 'my',      label: '내 결재' },
+          { key: 'pending', label: '받은 결재' },
+        ] as const).map(t => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={t.key}
+            onClick={() => { setTab(t.key); setStatusFilter('IN_PROGRESS'); setSearch(''); }}
             style={{
               padding: '10px 18px', background: 'none',
               borderTop: 'none', borderLeft: 'none', borderRight: 'none',
-              borderBottom: tab === t ? '2px solid var(--navy)' : '2px solid transparent',
-              fontSize: 13, fontWeight: tab === t ? 700 : 500,
-              color: tab === t ? 'var(--navy)' : 'var(--gray4)',
+              borderBottom: tab === t.key ? '2px solid var(--navy)' : '2px solid transparent',
+              fontSize: 13, fontWeight: tab === t.key ? 700 : 500,
+              color: tab === t.key ? 'var(--navy)' : 'var(--gray4)',
               marginBottom: -1, cursor: 'pointer', fontFamily: 'inherit',
             }}
-          >{t === 'my' ? '내 결재' : '그룹 결재'}</button>
+          >{t.label}</button>
         ))}
       </div>
 
-      {/* 상태 필터 + 카운터 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {([
+      {/* 상태 필터 (내 결재 탭에서만) + 검색 */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {tab === 'my' && ([
           { key: 'ALL',         label: '전체',    count: approvals.length },
           { key: 'IN_PROGRESS', label: '진행중',  count: counts['IN_PROGRESS'] ?? 0 },
           { key: 'APPROVED',    label: '승인',    count: counts['APPROVED'] ?? 0 },
@@ -153,35 +143,23 @@ export default function ApprovalListScreen() {
             }}
           >{f.label} <span style={{ fontFamily: 'var(--font-mono)' }}>{f.count}</span></button>
         ))}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="사업명 검색..."
+          style={{
+            marginLeft: tab === 'my' ? 'auto' : 0,
+            border: '1px solid var(--gray2)', borderRadius: 6,
+            padding: '6px 12px', fontSize: 12, fontFamily: 'inherit',
+            color: 'var(--navy)', outline: 'none', width: 180,
+          }}
+        />
       </div>
-
-      {bizFilter && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 11, color: 'var(--gray5)' }}>사업 필터:</span>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '4px 10px', borderRadius: 100,
-            background: 'var(--navy)', color: '#fff',
-            fontSize: 11, fontWeight: 600,
-          }}>
-            {bizFilter}
-            <button
-              onClick={() => setBizFilter(null)}
-              style={{
-                background: 'none', border: 'none', color: '#fff',
-                cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1,
-                fontFamily: 'inherit',
-              }}
-            >×</button>
-          </span>
-        </div>
-      )}
 
       {error && (
         <div style={{
-          fontSize: 12, color: 'var(--red)',
-          background: 'var(--red-bg)', border: '1px solid #F5C6C6',
-          borderRadius: 6, padding: '8px 12px', marginBottom: 16,
+          fontSize: 12, color: 'var(--red)', background: 'var(--red-bg)',
+          border: '1px solid #F5C6C6', borderRadius: 6, padding: '8px 12px', marginBottom: 16,
         }}>{error}</div>
       )}
 
@@ -191,14 +169,14 @@ export default function ApprovalListScreen() {
         <div style={{
           padding: 32, textAlign: 'center', fontSize: 13, color: 'var(--gray4)',
           background: '#fff', border: '1px solid var(--gray2)', borderRadius: 12,
-        }}>표시할 결재가 없습니다.</div>
-      ) : (
-        <div style={{
-          background: '#fff', borderRadius: 12, border: '1px solid var(--gray2)', overflow: 'hidden',
         }}>
+          {tab === 'pending' ? '처리할 결재가 없습니다.' : '표시할 결재가 없습니다.'}
+        </div>
+      ) : (
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--gray2)', overflow: 'hidden' }}>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '60px 1fr 100px 120px 130px 100px',
+            gridTemplateColumns: tab === 'pending' ? '60px 1fr 140px 130px 100px' : '60px 1fr 100px 130px 130px 100px',
             gap: 12, padding: '12px 20px',
             background: 'var(--gray1)',
             fontSize: 10, fontWeight: 700, color: 'var(--gray4)',
@@ -206,21 +184,25 @@ export default function ApprovalListScreen() {
           }}>
             <div>번호</div>
             <div>내용</div>
-            <div>상태</div>
+            {tab === 'pending' ? (
+              <div>요청자</div>
+            ) : (
+              <div>상태</div>
+            )}
             <div>현재 단계</div>
             <div>금액</div>
             <div>제출일</div>
           </div>
           {filtered.map(a => {
             const cfg = STATUS_CFG[a.status];
-            const currentStep = a.steps.find(s => s.approvalOrder === a.currentApprovalOrder);
+            const currentStep = a.steps.find(s => s.approvalOrder === a.currentApprovalOrder && s.action === 'PENDING');
             return (
               <div
                 key={a.requestId}
                 onClick={() => router.push(`/approvals/${a.requestId}`)}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '60px 1fr 100px 120px 130px 100px',
+                  gridTemplateColumns: tab === 'pending' ? '60px 1fr 140px 130px 100px' : '60px 1fr 100px 130px 130px 100px',
                   gap: 12, padding: '14px 20px',
                   borderTop: '1px solid var(--gray1)',
                   cursor: 'pointer', alignItems: 'center',
@@ -231,13 +213,23 @@ export default function ApprovalListScreen() {
               >
                 <div style={{ fontSize: 11, color: 'var(--gray4)', fontFamily: 'var(--font-mono)' }}>#{a.requestId}</div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{deriveTitle(a)}</div>
-                <div>
-                  <span style={{
-                    display: 'inline-flex', fontSize: 10, fontWeight: 700,
-                    padding: '2px 8px', borderRadius: 100,
-                    background: cfg.bg, color: cfg.color,
-                  }}>{cfg.label}</span>
-                </div>
+                {tab === 'pending' ? (
+                  <div style={{ fontSize: 11, color: 'var(--gray5)' }}>
+                    <span style={{
+                      display: 'inline-flex', fontSize: 10, fontWeight: 700,
+                      padding: '2px 8px', borderRadius: 100,
+                      background: cfg.bg, color: cfg.color,
+                    }}>{cfg.label}</span>
+                  </div>
+                ) : (
+                  <div>
+                    <span style={{
+                      display: 'inline-flex', fontSize: 10, fontWeight: 700,
+                      padding: '2px 8px', borderRadius: 100,
+                      background: cfg.bg, color: cfg.color,
+                    }}>{cfg.label}</span>
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: 'var(--gray5)' }}>
                   {a.status === 'IN_PROGRESS' && currentStep
                     ? `${currentStep.roleName} 결재 대기`

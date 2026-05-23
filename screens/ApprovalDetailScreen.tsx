@@ -107,7 +107,7 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
   const canCancel = isRequester && data.status === 'APPROVED';
 
   async function handleDownload() {
-    if (!data.evidenceId || !data.formId) {
+    if (!data?.evidenceId || !data?.formId) {
       setDownloadError('증빙 정보가 없어 다운로드할 수 없습니다.');
       return;
     }

@@ -646,23 +646,24 @@ export default function PDFScreen() {
                   업로드한 증빙 {queuePos.total}건 중 {queuePos.index + 1}번째까지 작성했습니다.
                   영수증 재선택 없이 다음 증빙서류로 이어서 작성하세요.
                 </div>
-                <button
-                  onClick={goToNextInQueue}
-                  style={{
-                    background: 'var(--navy)', color: '#fff', border: 'none',
-                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >다음 증빙서류 작성 ({queuePos.index + 2}/{queuePos.total}) →</button>
-                <button
-                  onClick={() => router.push('/expense-board')}
-                  style={{
-                    marginLeft: 8,
-                    background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
-                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >목록으로</button>
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    onClick={goToNextInQueue}
+                    style={{
+                      flex: 1, background: 'var(--navy)', color: '#fff', border: 'none',
+                      borderRadius: 8, padding: '11px 16px', fontSize: 13, fontWeight: 700,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >다음 증빙서류 작성 ({queuePos.index + 2}/{queuePos.total}) →</button>
+                  <button
+                    onClick={() => router.push('/expense-board')}
+                    style={{
+                      background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
+                      borderRadius: 8, padding: '11px 16px', fontSize: 13, fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >목록으로</button>
+                </div>
               </>
             ) : (
               <>
@@ -670,23 +671,24 @@ export default function PDFScreen() {
                 <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 10 }}>
                   {queuePos ? '업로드한 증빙을 모두 작성했습니다. ' : ''}같은 사업의 다른 지출결의서를 작성하시겠습니까?
                 </div>
-                <button
-                  onClick={startNewDocument}
-                  style={{
-                    background: 'var(--navy)', color: '#fff', border: 'none',
-                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >+ 추가 증빙서류 작성</button>
-                <button
-                  onClick={() => router.push('/expense-board')}
-                  style={{
-                    marginLeft: 8,
-                    background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
-                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >목록으로</button>
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    onClick={startNewDocument}
+                    style={{
+                      flex: 1, background: 'var(--navy)', color: '#fff', border: 'none',
+                      borderRadius: 8, padding: '11px 16px', fontSize: 13, fontWeight: 700,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >+ 추가 증빙서류 작성</button>
+                  <button
+                    onClick={() => router.push('/expense-board')}
+                    style={{
+                      background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
+                      borderRadius: 8, padding: '11px 16px', fontSize: 13, fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >목록으로</button>
+                </div>
               </>
             )}
           </div>

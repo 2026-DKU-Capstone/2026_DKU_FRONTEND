@@ -317,7 +317,7 @@ export default function DocReviewScreen() {
       <FinalCheckOverlay
         open={finalCheckOpen}
         onClose={() => setFinalCheckOpen(false)}
-        onProceed={() => { setFinalCheckOpen(false); router.push('/pdf'); }}
+        onProceed={() => { setFinalCheckOpen(false); router.push('/compliance'); }}
       />
 
       <style>{`

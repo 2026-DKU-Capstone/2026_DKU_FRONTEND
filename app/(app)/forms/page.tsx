@@ -37,7 +37,8 @@ function getExt(name: string) {
   return ext.length <= 4 ? ext : '';
 }
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr: string | null | undefined) {
+  if (!dateStr) return '-';
   return dateStr.slice(0, 10).replace(/-/g, '.');
 }
 

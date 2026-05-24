@@ -16,6 +16,7 @@ interface Member {
   userId: number;
   name: string;
   email: string;
+  roleId: number;
   roleName: string;
   approvalOrder: number;
 }
@@ -225,7 +226,7 @@ export default function GroupSettingsScreen() {
                 </div>
                 {isOwner ? (
                   <select
-                    value={group.roles.find(r => r.roleName === m.roleName)?.roleId ?? ''}
+                    value={m.roleId}
                     onChange={e => changeMemberRole(m.userId, Number(e.target.value))}
                     style={{
                       border: '1px solid var(--gray2)', borderRadius: 6,

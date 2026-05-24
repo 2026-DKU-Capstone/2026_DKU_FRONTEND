@@ -36,13 +36,15 @@ export default function ReceiptScreen() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragging, setDragging] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePicked = (picked: FileList | null) => {
-    if (!picked) return;
-    const arr = Array.from(picked).map(f => ({ file: f, ext: getExt(f.name), size: f.size }));
-    setFiles(prev => [...prev, ...arr]);
+    if (!picked || picked.length === 0) return;
+    // 여러 장을 한 번에 올리면 큐에 추가해 한 건씩 순서대로 작성한다 (#3 연속 작성)
+    const added = Array.from(picked).map(f => ({ file: f, ext: getExt(f.name), size: f.size }));
+    setFiles(prev => [...prev, ...added]);
   };
 
   const removeFile = (idx: number) => {
@@ -56,23 +58,32 @@ export default function ReceiptScreen() {
     }
     setError(''); setAnalyzing(true);
     try {
-      const fd = new FormData();
-      fd.append('file', files[0].file);
       const groupId = getGroupId();
-      if (groupId) fd.append('groupId', String(groupId));
       const businessName = sessionStorage.getItem('currentBusinessName');
-      if (businessName) fd.append('businessName', businessName);
-      const res = await apiFetch('/api/evidence/analyze', { method: 'POST', body: fd });
-      if (res.ok) {
+      // 업로드한 파일을 한 건씩 OCR 분석해 큐로 만든다. (#3 연속 작성)
+      const queue: { evidenceId: number; availableForms: AvailableForm[]; fileName: string }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        setAnalyzeProgress({ current: i + 1, total: files.length });
+        const fd = new FormData();
+        fd.append('file', files[i].file);
+        if (groupId) fd.append('groupId', String(groupId));
+        if (businessName) fd.append('businessName', businessName);
+        const res = await apiFetch('/api/evidence/analyze', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          setError(`${files[i].file.name} 분석 실패: ${body?.error ?? 'OCR 분석에 실패했습니다.'}`);
+          setAnalyzing(false);
+          return;
+        }
         const data: { evidenceId: number; paymentType: string; extractedText: string; availableForms: AvailableForm[] } = await res.json();
-        sessionStorage.setItem('evidenceId', String(data.evidenceId));
-        sessionStorage.setItem('availableForms', JSON.stringify(data.availableForms));
-        router.push('/form-recommend');
-      } else {
-        const body = await res.json().catch(() => null);
-        setError(body?.error ?? 'OCR 분석에 실패했습니다.');
-        setAnalyzing(false);
+        queue.push({ evidenceId: data.evidenceId, availableForms: data.availableForms, fileName: files[i].file.name });
       }
+      // 큐 저장 + 첫 번째 증빙으로 시작
+      sessionStorage.setItem('evidenceQueue', JSON.stringify(queue));
+      sessionStorage.setItem('queueIndex', '0');
+      sessionStorage.setItem('evidenceId', String(queue[0].evidenceId));
+      sessionStorage.setItem('availableForms', JSON.stringify(queue[0].availableForms));
+      router.push('/form-recommend');
     } catch {
       setError('서버에 연결할 수 없습니다.');
       setAnalyzing(false);
@@ -125,6 +136,8 @@ export default function ReceiptScreen() {
             transform: dragging ? 'translateY(-1px)' : 'none',
           }}
         >
+          {files.length === 0 ? (
+          <>
           {/* Paper illustration */}
           <div style={{ width: 200, height: 140, margin: '0 auto 28px', position: 'relative' }}>
             <div style={{
@@ -172,7 +185,7 @@ export default function ReceiptScreen() {
             파일을 끌어다 놓거나 클릭해서 업로드하세요
           </div>
           <div style={{ fontSize: 13, color: 'var(--gray5)', marginBottom: 24 }}>
-            한 번에 여러 파일을 업로드할 수 있어요
+            여러 장을 한 번에 올리면 한 건씩 순서대로 이어서 작성합니다
           </div>
           <div style={{ display: 'inline-flex', gap: 10 }}>
             <button
@@ -210,6 +223,65 @@ export default function ReceiptScreen() {
             ))}
             <span>최대 20MB / 파일</span>
           </div>
+          </>
+          ) : (
+          /* 파일 선택 후: 드롭존이 파일 목록 카드로 전환 (#1) */
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left' }}
+          >
+            {files.map((f, i) => {
+              const c = EXT_COLORS[f.ext] ?? { bg: 'var(--gray1)', color: 'var(--gray4)' };
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  background: '#fff', border: '1px solid var(--gray2)',
+                  borderRadius: 12, padding: '14px 18px',
+                }}>
+                  <div style={{
+                    width: 38, height: 46, borderRadius: 6,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 800,
+                    background: c.bg, color: c.color, flexShrink: 0,
+                  }}>{f.ext}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 600, color: 'var(--navy)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{f.file.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray4)', fontFamily: 'var(--font-mono)' }}>
+                      {(f.size / 1024).toFixed(0)}KB · 업로드 완료
+                    </div>
+                    <div style={{
+                      height: 4, background: 'var(--gray2)', borderRadius: 100,
+                      marginTop: 6, overflow: 'hidden',
+                    }}>
+                      <div style={{ height: '100%', background: 'var(--green)', borderRadius: 100, width: '100%' }} />
+                    </div>
+                  </div>
+                  <span style={{ color: 'var(--green)', fontWeight: 700, fontSize: 18 }}>✓</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); removeFile(i); }}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--gray3)',
+                      cursor: 'pointer', fontSize: 15, fontFamily: 'inherit',
+                    }}
+                  >✕</button>
+                </div>
+              );
+            })}
+            <button
+              onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
+              style={{
+                alignSelf: 'center', marginTop: 4,
+                background: '#fff', color: 'var(--navy)',
+                border: '1.5px solid var(--gray2)', borderRadius: 10,
+                padding: '9px 18px', fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >+ 파일 추가</button>
+          </div>
+          )}
         </div>
 
         {error && (
@@ -252,52 +324,6 @@ export default function ReceiptScreen() {
           ))}
         </div>
 
-        {/* 업로드된 파일 목록 */}
-        {files.length > 0 && (
-          <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {files.map((f, i) => {
-              const c = EXT_COLORS[f.ext] ?? { bg: 'var(--gray1)', color: 'var(--gray4)' };
-              return (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  background: '#fff', border: '1px solid var(--gray2)',
-                  borderRadius: 12, padding: '14px 18px',
-                }}>
-                  <div style={{
-                    width: 38, height: 46, borderRadius: 6,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 800,
-                    background: c.bg, color: c.color, flexShrink: 0,
-                  }}>{f.ext}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 600, color: 'var(--navy)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>{f.file.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--gray4)', fontFamily: 'var(--font-mono)' }}>
-                      {(f.size / 1024).toFixed(0)}KB · 업로드 완료
-                    </div>
-                    <div style={{
-                      height: 4, background: 'var(--gray2)', borderRadius: 100,
-                      marginTop: 6, overflow: 'hidden',
-                    }}>
-                      <div style={{ height: '100%', background: 'var(--green)', borderRadius: 100, width: '100%' }} />
-                    </div>
-                  </div>
-                  <span style={{ color: 'var(--green)', fontWeight: 700, fontSize: 18 }}>✓</span>
-                  <button
-                    onClick={() => removeFile(i)}
-                    style={{
-                      background: 'none', border: 'none', color: 'var(--gray3)',
-                      cursor: 'pointer', fontSize: 15, fontFamily: 'inherit',
-                    }}
-                  >✕</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
         {/* Bottom bar */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -331,6 +357,11 @@ export default function ReceiptScreen() {
           }} />
           <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>
             증빙 자료 분석 중...
+            {analyzeProgress.total > 1 && (
+              <span style={{ color: 'var(--gray4)', fontWeight: 600, fontSize: 13 }}>
+                {' '}({analyzeProgress.current}/{analyzeProgress.total})
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--gray4)', lineHeight: 1.7 }}>
             AI가 OCR로 문서를 인식하고<br />금액·날짜·거래처를 추출하는 중입니다

@@ -32,6 +32,20 @@ export default function PDFScreen() {
   const [photoError, setPhotoError] = useState('');
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  // #3 수령인 정보 자동 입력 (학생증 OCR)
+  const [recipientFields, setRecipientFields] = useState<string[]>([]);
+  const [recipientFilled, setRecipientFilled] = useState<Record<string, string>>({});
+  const [recipientUploading, setRecipientUploading] = useState(false);
+  const [recipientError, setRecipientError] = useState('');
+  const recipientInputRef = useRef<HTMLInputElement>(null);
+
+  // #14 다운로드 완료 피드백
+  const [downloaded, setDownloaded] = useState(false);
+  const [toast, setToast] = useState('');
+
+  // #3 연속 작성: 업로드한 증빙 큐에서 현재 위치 (여러 건 업로드 시에만 사용)
+  const [queuePos, setQueuePos] = useState<{ index: number; total: number } | null>(null);
+
   useEffect(() => {
     const name = sessionStorage.getItem('formName');
     if (name) setFormName(name);
@@ -42,6 +56,22 @@ export default function PDFScreen() {
     const userInput: Record<string, string> = userInputRaw ? JSON.parse(userInputRaw) : {};
     const merged = { ...filled, ...userInput };
 
+    // #3 수령인 텍스트 필드 감지: 선택한 양식의 필드 목록(없으면 채워진 필드 키)에서
+    //    '수령인'/'수령자'를 포함하되 이미지 첨부용(사진/부착/이미지/학생증) 필드는 제외
+    let allFieldNames: string[] = [];
+    try {
+      const forms = JSON.parse(sessionStorage.getItem('availableForms') ?? '[]');
+      const formId = sessionStorage.getItem('formId');
+      const selected = Array.isArray(forms)
+        ? forms.find((f: { formId: number; fields?: string[] }) => String(f.formId) === String(formId))
+        : null;
+      if (selected?.fields?.length) allFieldNames = selected.fields;
+    } catch { /* 무시 */ }
+    if (allFieldNames.length === 0) allFieldNames = Object.keys(merged);
+    setRecipientFields(allFieldNames.filter(
+      f => (f.includes('수령인') || f.includes('수령자')) && !/사진|부착|이미지|학생증/.test(f)
+    ));
+
     const total = Object.entries(merged).reduce((acc, [k, v]) => {
       const n = parseInt(String(v).replace(/[^\d-]/g, ''), 10);
       if (!isNaN(n) && /금액|비$|료$|값$/.test(k)) return acc + n;
@@ -51,6 +81,13 @@ export default function PDFScreen() {
 
     const evidenceId = sessionStorage.getItem('evidenceId');
     if (evidenceId) setDocNumber(`#${new Date().getFullYear()}-${evidenceId.padStart(4, '0')}`);
+
+    // #3 연속 작성: 여러 건 업로드한 경우 큐 내 현재 위치 파악
+    try {
+      const q = JSON.parse(sessionStorage.getItem('evidenceQueue') ?? '[]');
+      const idx = parseInt(sessionStorage.getItem('queueIndex') ?? '0', 10);
+      if (Array.isArray(q) && q.length > 1) setQueuePos({ index: idx, total: q.length });
+    } catch { /* 무시 */ }
   }, []);
 
   async function handleDownload() {
@@ -75,9 +112,24 @@ export default function PDFScreen() {
       const imageFields: Record<string, string> = { '영수증': 'evidence' };
       // 사용자가 PhotoScreen에서 올린 사진(예: 학생증)도 함께. 같은 키면 사용자 입력이 덮어씀.
       photos.forEach(p => { imageFields[p.label] = p.filePath; });
+      // doc-review에서 올린 학생증을 양식의 '학생증 부착' 란에 부착 (영수증 부착과 동일 방식)
+      try {
+        const scRaw = sessionStorage.getItem('studentCardPhoto');
+        if (scRaw) {
+          const sc: { label?: string; filePath?: string } = JSON.parse(scRaw);
+          if (sc.filePath) imageFields[sc.label || '학생증'] = sc.filePath;
+        }
+      } catch { /* 무시 */ }
 
       const err = await downloadDocument({ evidenceId, formId, filledFields, userInputFields, imageFields, formName });
-      if (err) setError(err);
+      if (err) {
+        setError(err);
+      } else {
+        // #14 다운로드 완료 피드백: 토스트 + 버튼 일시 전환
+        setDownloaded(true);
+        setToast('문서가 다운로드되었습니다.');
+        setTimeout(() => { setDownloaded(false); setToast(''); }, 2500);
+      }
     } catch { setError('서버에 연결할 수 없습니다.'); }
     finally { setDownloading(false); }
   }
@@ -150,6 +202,67 @@ export default function PDFScreen() {
       if (res.ok || res.status === 204) {
         setPhotos(prev => prev.filter(p => p.photoId !== photoId));
       }
+    } catch { /* 무시 */ }
+  }
+
+  // #3 수령인 학생증 사진에서 인적 정보를 추출해 수령인 필드를 자동 채움
+  async function extractRecipient(file: File) {
+    setRecipientUploading(true); setRecipientError('');
+    try {
+      const fd = new FormData();
+      fd.append('recipientImage', file);
+      const res = await apiFetch('/api/evidence/extract-recipient', { method: 'POST', body: fd });
+      if (res.ok) {
+        const info: { name: string; affiliation: string; studentId: string; phone: string } = await res.json();
+        applyRecipientInfo(info);
+      } else {
+        const body = await res.json().catch(() => null);
+        setRecipientError(body?.error ?? '수령인 정보 추출에 실패했습니다.');
+      }
+    } catch { setRecipientError('서버에 연결할 수 없습니다.'); }
+    finally { setRecipientUploading(false); }
+  }
+
+  // 추출 결과를 수령인 필드명에 매핑해 userInputFields에 병합 저장 (다운로드/제출 시 포함)
+  function applyRecipientInfo(info: { name: string; affiliation: string; studentId: string; phone: string }) {
+    const mapped: Record<string, string> = {};
+    recipientFields.forEach(f => {
+      let v = '';
+      if (f.includes('이름') || f.includes('성명')) v = info.name;
+      else if (f.includes('소속')) v = info.affiliation;
+      else if (f.includes('학번') || f.includes('사번')) v = info.studentId;
+      else if (f.includes('전화') || f.includes('연락')) v = info.phone;
+      else v = info.name; // 단독 '수령인' 필드는 이름으로
+      if (v) mapped[f] = v;
+    });
+    const raw = sessionStorage.getItem('userInputFields');
+    const userInput: Record<string, string> = raw ? JSON.parse(raw) : {};
+    sessionStorage.setItem('userInputFields', JSON.stringify({ ...userInput, ...mapped }));
+    setRecipientFilled(mapped);
+  }
+
+  // #9 추가 증빙서류 작성: 현재 문서 상태를 초기화하고 Step 1로 이동 (같은 사업명·그룹은 유지)
+  function startNewDocument() {
+    ['evidenceId', 'availableForms', 'formId', 'formName', 'filledFields', 'missingFields',
+     'userInputFields', 'selectedFormIds', 'evidenceQueue', 'queueIndex', 'studentCardPhoto']
+      .forEach(k => sessionStorage.removeItem(k));
+    router.push('/receipt');
+  }
+
+  // #3 연속 작성: 업로드한 다음 증빙으로 이어서 진행 (영수증 재선택 없이 양식 추천부터)
+  function goToNextInQueue() {
+    try {
+      const q = JSON.parse(sessionStorage.getItem('evidenceQueue') ?? '[]');
+      const idx = parseInt(sessionStorage.getItem('queueIndex') ?? '0', 10);
+      const next = idx + 1;
+      if (!Array.isArray(q) || next >= q.length) return;
+      // 다음 증빙으로 전환 + 현재 문서 작성 상태 초기화 (사업명·그룹·큐는 유지)
+      sessionStorage.setItem('queueIndex', String(next));
+      sessionStorage.setItem('evidenceId', String(q[next].evidenceId));
+      sessionStorage.setItem('availableForms', JSON.stringify(q[next].availableForms));
+      ['formId', 'formName', 'filledFields', 'missingFields', 'userInputFields', 'selectedFormIds', 'studentCardPhoto']
+        .forEach(k => sessionStorage.removeItem(k));
+      router.push('/form-recommend');
     } catch { /* 무시 */ }
   }
 
@@ -242,13 +355,14 @@ export default function PDFScreen() {
               onClick={handleDownload}
               disabled={downloading}
               style={{
-                background: 'var(--navy)', color: '#fff', border: 'none',
+                background: downloaded ? 'var(--green)' : 'var(--navy)', color: '#fff', border: 'none',
                 borderRadius: 6, padding: '9px 20px',
                 fontSize: 13, fontWeight: 600,
                 cursor: downloading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 opacity: downloading ? 0.7 : 1,
+                transition: 'background .2s',
               }}
-            >{downloading ? '생성 중...' : '문서 다운로드'}</button>
+            >{downloading ? '생성 중...' : downloaded ? '다운로드 완료 ✓' : '문서 다운로드'}</button>
             <button
               onClick={handleSubmit}
               disabled={submitting || submitted}
@@ -274,6 +388,64 @@ export default function PDFScreen() {
 
         {/* 우측 정보 카드들 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* #3 수령인 정보 자동 입력 (학생증 OCR) — 양식에 수령인 필드가 있을 때만 표시 */}
+          {recipientFields.length > 0 && (
+            <div style={{
+              background: '#fff', borderRadius: 12,
+              border: '1px solid var(--gray2)', padding: '18px 20px',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>
+                수령인 정보 자동 입력 <span style={{ fontWeight: 400, color: 'var(--gray4)', fontSize: 11 }}>(학생증 OCR)</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 12 }}>
+                수령인 학생증 사진을 올리면 이름·소속·학번·전화번호를 추출해 수령인 필드를 자동으로 채웁니다.
+                추출되지 않은 항목은 직접 입력해 주세요.
+              </div>
+              <input
+                ref={recipientInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) extractRecipient(file);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                onClick={() => recipientInputRef.current?.click()}
+                disabled={recipientUploading}
+                style={{
+                  width: '100%',
+                  background: 'var(--navy)', color: '#fff', border: 'none',
+                  borderRadius: 6, padding: '9px 14px', fontSize: 12, fontWeight: 600,
+                  cursor: recipientUploading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  opacity: recipientUploading ? 0.7 : 1,
+                }}
+              >{recipientUploading ? '추출 중...' : '+ 학생증으로 자동 입력'}</button>
+              {recipientError && (
+                <div style={{
+                  fontSize: 11, color: 'var(--red)',
+                  background: 'var(--red-bg)', border: '1px solid #F5C6C6',
+                  borderRadius: 6, padding: '6px 10px', marginTop: 8,
+                }}>{recipientError}</div>
+              )}
+              {Object.keys(recipientFilled).length > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {Object.entries(recipientFilled).map(([k, v]) => (
+                    <div key={k} style={{
+                      display: 'flex', justifyContent: 'space-between', gap: 10,
+                      fontSize: 12, background: 'var(--green-bg)', borderRadius: 6, padding: '7px 10px',
+                    }}>
+                      <span style={{ color: 'var(--gray5)' }}>{k}</span>
+                      <span style={{ color: 'var(--navy)', fontWeight: 600 }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 사진 첨부 (선택) */}
           <div style={{
             background: '#fff', borderRadius: 12,
@@ -464,30 +636,76 @@ export default function PDFScreen() {
             border: '1px solid #C8D6E8', borderRadius: 12,
             padding: '18px 20px',
           }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 5 }}>새 문서 작성</div>
-            <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 10 }}>
-              같은 사업의 다른 지출결의서를 작성하시겠습니까?
-            </div>
-            <button
-              onClick={() => router.push('/receipt')}
-              style={{
-                background: 'var(--navy)', color: '#fff', border: 'none',
-                borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >+ 새 문서 작성</button>
-            <button
-              onClick={() => router.push('/expense-board')}
-              style={{
-                marginLeft: 8,
-                background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
-                borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >목록으로</button>
+            {queuePos && queuePos.index + 1 < queuePos.total ? (
+              /* #3 업로드한 다음 증빙이 남아 있으면 이어서 작성 */
+              <>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 5 }}>
+                  다음 증빙서류 작성
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 10 }}>
+                  업로드한 증빙 {queuePos.total}건 중 {queuePos.index + 1}번째까지 작성했습니다.
+                  영수증 재선택 없이 다음 증빙서류로 이어서 작성하세요.
+                </div>
+                <button
+                  onClick={goToNextInQueue}
+                  style={{
+                    background: 'var(--navy)', color: '#fff', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >다음 증빙서류 작성 ({queuePos.index + 2}/{queuePos.total}) →</button>
+                <button
+                  onClick={() => router.push('/expense-board')}
+                  style={{
+                    marginLeft: 8,
+                    background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >목록으로</button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 5 }}>새 문서 작성</div>
+                <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 10 }}>
+                  {queuePos ? '업로드한 증빙을 모두 작성했습니다. ' : ''}같은 사업의 다른 지출결의서를 작성하시겠습니까?
+                </div>
+                <button
+                  onClick={startNewDocument}
+                  style={{
+                    background: 'var(--navy)', color: '#fff', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >+ 추가 증빙서류 작성</button>
+                <button
+                  onClick={() => router.push('/expense-board')}
+                  style={{
+                    marginLeft: 8,
+                    background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >목록으로</button>
+              </>
+            )}
           </div>
         </div>
       </div>
+
+      {/* #14 다운로드 완료 토스트 */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--navy)', color: '#fff',
+          padding: '12px 22px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+          boxShadow: '0 10px 30px rgba(28,43,74,.25)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ color: 'var(--green)', fontWeight: 700 }}>✓</span>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

@@ -31,6 +31,7 @@ interface Group {
   groupId: number;
   name: string;
   inviteCode: string;
+  ownerId: number;
   ownerName: string;
   roles: Role[];
   members: Member[];
@@ -80,7 +81,7 @@ export default function GroupSettingsScreen() {
   if (error || !group) return <div style={{ padding: 32, fontFamily: 'var(--font-ui)', color: 'var(--red)' }}>{error}</div>;
 
   const me = getUserInfo();
-  const isOwner = me ? group.members.some(m => m.userId === me.userId && m.approvalOrder === Math.max(...group.roles.map(r => r.approvalOrder))) : false;
+  const isOwner = me ? group.ownerId === me.userId : false;
 
   async function kickMember(userId: number, name: string) {
     if (!group) return;

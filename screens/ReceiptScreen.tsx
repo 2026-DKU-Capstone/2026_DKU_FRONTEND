@@ -36,14 +36,15 @@ export default function ReceiptScreen() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragging, setDragging] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePicked = (picked: FileList | null) => {
     if (!picked || picked.length === 0) return;
-    // 1개씩만 작성 (#9): 새로 고르면 기존 파일을 교체
-    const f = picked[0];
-    setFiles([{ file: f, ext: getExt(f.name), size: f.size }]);
+    // 여러 장을 한 번에 올리면 큐에 추가해 한 건씩 순서대로 작성한다 (#3 연속 작성)
+    const added = Array.from(picked).map(f => ({ file: f, ext: getExt(f.name), size: f.size }));
+    setFiles(prev => [...prev, ...added]);
   };
 
   const removeFile = (idx: number) => {
@@ -57,23 +58,32 @@ export default function ReceiptScreen() {
     }
     setError(''); setAnalyzing(true);
     try {
-      const fd = new FormData();
-      fd.append('file', files[0].file);
       const groupId = getGroupId();
-      if (groupId) fd.append('groupId', String(groupId));
       const businessName = sessionStorage.getItem('currentBusinessName');
-      if (businessName) fd.append('businessName', businessName);
-      const res = await apiFetch('/api/evidence/analyze', { method: 'POST', body: fd });
-      if (res.ok) {
+      // 업로드한 파일을 한 건씩 OCR 분석해 큐로 만든다. (#3 연속 작성)
+      const queue: { evidenceId: number; availableForms: AvailableForm[]; fileName: string }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        setAnalyzeProgress({ current: i + 1, total: files.length });
+        const fd = new FormData();
+        fd.append('file', files[i].file);
+        if (groupId) fd.append('groupId', String(groupId));
+        if (businessName) fd.append('businessName', businessName);
+        const res = await apiFetch('/api/evidence/analyze', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          setError(`${files[i].file.name} 분석 실패: ${body?.error ?? 'OCR 분석에 실패했습니다.'}`);
+          setAnalyzing(false);
+          return;
+        }
         const data: { evidenceId: number; paymentType: string; extractedText: string; availableForms: AvailableForm[] } = await res.json();
-        sessionStorage.setItem('evidenceId', String(data.evidenceId));
-        sessionStorage.setItem('availableForms', JSON.stringify(data.availableForms));
-        router.push('/form-recommend');
-      } else {
-        const body = await res.json().catch(() => null);
-        setError(body?.error ?? 'OCR 분석에 실패했습니다.');
-        setAnalyzing(false);
+        queue.push({ evidenceId: data.evidenceId, availableForms: data.availableForms, fileName: files[i].file.name });
       }
+      // 큐 저장 + 첫 번째 증빙으로 시작
+      sessionStorage.setItem('evidenceQueue', JSON.stringify(queue));
+      sessionStorage.setItem('queueIndex', '0');
+      sessionStorage.setItem('evidenceId', String(queue[0].evidenceId));
+      sessionStorage.setItem('availableForms', JSON.stringify(queue[0].availableForms));
+      router.push('/form-recommend');
     } catch {
       setError('서버에 연결할 수 없습니다.');
       setAnalyzing(false);
@@ -87,6 +97,7 @@ export default function ReceiptScreen() {
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
         style={{ display: 'none' }}
         onChange={e => { handlePicked(e.target.files); e.target.value = ''; }}
@@ -174,7 +185,7 @@ export default function ReceiptScreen() {
             파일을 끌어다 놓거나 클릭해서 업로드하세요
           </div>
           <div style={{ fontSize: 13, color: 'var(--gray5)', marginBottom: 24 }}>
-            지금은 1개씩 작성하고, 완료 후 추가 작성이 가능합니다
+            여러 장을 한 번에 올리면 한 건씩 순서대로 이어서 작성합니다
           </div>
           <div style={{ display: 'inline-flex', gap: 10 }}>
             <button
@@ -268,7 +279,7 @@ export default function ReceiptScreen() {
                 padding: '9px 18px', fontSize: 12, fontWeight: 700,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
-            >다른 파일 선택</button>
+            >+ 파일 추가</button>
           </div>
           )}
         </div>
@@ -346,6 +357,11 @@ export default function ReceiptScreen() {
           }} />
           <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>
             증빙 자료 분석 중...
+            {analyzeProgress.total > 1 && (
+              <span style={{ color: 'var(--gray4)', fontWeight: 600, fontSize: 13 }}>
+                {' '}({analyzeProgress.current}/{analyzeProgress.total})
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--gray4)', lineHeight: 1.7 }}>
             AI가 OCR로 문서를 인식하고<br />금액·날짜·거래처를 추출하는 중입니다

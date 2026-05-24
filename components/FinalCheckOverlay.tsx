@@ -133,26 +133,52 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
     };
   }, [open]);
 
+  // 학생증으로 추출한 값을 양식의 수령인 필드(formMissing 중 '수령인/수령자')에도 채운다.
+  function applyToRecipientFormFields(info: Partial<PayerInfo>) {
+    setFormValues(prev => {
+      const next = { ...prev };
+      formMissing.forEach(f => {
+        if (!/수령인|수령자/.test(f) || /사진|부착|이미지|학생증/.test(f)) return;
+        let v = '';
+        if (f.includes('이름') || f.includes('성명')) v = info.name ?? '';
+        else if (f.includes('소속')) v = info.affiliation ?? '';
+        else if (f.includes('학번') || f.includes('사번')) v = info.studentId ?? '';
+        else if (f.includes('전화') || f.includes('연락')) v = info.phone ?? '';
+        else v = info.name ?? '';
+        if (v && !(next[f] ?? '').trim()) next[f] = v;
+      });
+      return next;
+    });
+  }
+
   async function uploadStudentCard(file: File) {
     setCardAnalyzing(true);
     setCardError('');
     setCardFileName(file.name);
 
-    const reader = new FileReader();
-    reader.onload = () => setCardPreview(reader.result as string);
-    reader.readAsDataURL(file);
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!isPdf) {
+      const reader = new FileReader();
+      reader.onload = () => setCardPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setCardPreview(null);
+    }
 
     try {
+      // 1) OCR로 수령인 정보 추출
       const fd = new FormData();
-      fd.append('file', file);
-      const res = await apiFetch('/api/student-id/analyze', { method: 'POST', body: fd });
+      fd.append('recipientImage', file);
+      const res = await apiFetch('/api/evidence/extract-recipient', { method: 'POST', body: fd });
       if (res.ok) {
-        const data = await res.json().catch(() => null);
+        const data: { name?: string; affiliation?: string; studentId?: string; phone?: string } =
+          await res.json().catch(() => ({}));
         const updates: Partial<PayerInfo> = {};
         const extracted: PayerKey[] = [];
         if (data?.name) { updates.name = String(data.name); extracted.push('name'); }
         if (data?.studentId) { updates.studentId = String(data.studentId); extracted.push('studentId'); }
         if (data?.affiliation) { updates.affiliation = String(data.affiliation); extracted.push('affiliation'); }
+        if (data?.phone) { updates.phone = String(data.phone); extracted.push('phone'); }
         if (extracted.length > 0) {
           setPayer(p => ({ ...p, ...updates }));
           setCardExtracted(prev => {
@@ -160,6 +186,7 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
             extracted.forEach(k => next.add(k));
             return next;
           });
+          applyToRecipientFormFields(updates);
         } else {
           setCardError('학생증에서 정보를 인식하지 못했습니다. 직접 입력해 주세요.');
         }
@@ -169,9 +196,25 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
       }
     } catch {
       setCardError('서버에 연결할 수 없어 학생증 인식을 건너뜁니다.');
-    } finally {
-      setCardAnalyzing(false);
     }
+
+    // 2) 양식의 '학생증 부착' 란에 넣을 수 있도록 이미지 저장 (이미지 형식만; PDF는 부착 불가)
+    if (!isPdf) {
+      try {
+        const fd2 = new FormData();
+        fd2.append('file', file);
+        fd2.append('label', '학생증');
+        const up = await apiFetch('/api/photos/upload', { method: 'POST', body: fd2 });
+        if (up.ok) {
+          const photo: { filePath: string } = await up.json();
+          if (photo?.filePath) {
+            sessionStorage.setItem('studentCardPhoto', JSON.stringify({ label: '학생증', filePath: photo.filePath }));
+          }
+        }
+      } catch { /* 부착용 저장 실패는 무시 (OCR은 이미 시도됨) */ }
+    }
+
+    setCardAnalyzing(false);
   }
 
   async function handleSubmit() {
@@ -225,8 +268,8 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
   const visiblePayerKeys: PayerKey[] = (['studentId', 'name', 'affiliation', 'phone'] as PayerKey[])
     .filter(k => payerMissing.includes(k) || cardExtracted.has(k));
 
-  // 학생증 업로드는 이름·학번 중 하나라도 비어있을 때만 노출
-  const showCardUpload = payerMissing.includes('studentId') || payerMissing.includes('name');
+  // 수령인 정보는 무조건 학생증으로 입력받는다: 수령인 정보 섹션이 보이면 항상 노출
+  const showCardUpload = visiblePayerKeys.length > 0;
 
   return (
     <div
@@ -336,7 +379,7 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
                     <input
                       ref={cardInputRef}
                       type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf,.pdf"
                       style={{ display: 'none' }}
                       onChange={e => {
                         const f = e.target.files?.[0];
@@ -373,12 +416,21 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
                             이름과 학번을 인식하고 있어요
                           </div>
                         </div>
-                      ) : cardPreview ? (
+                      ) : (cardPreview || cardFileName) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <img src={cardPreview} alt="학생증" style={{
-                            width: 56, height: 56, objectFit: 'cover',
-                            borderRadius: 6, border: '1px solid var(--gray2)', flexShrink: 0,
-                          }} />
+                          {cardPreview ? (
+                            <img src={cardPreview} alt="학생증" style={{
+                              width: 56, height: 56, objectFit: 'cover',
+                              borderRadius: 6, border: '1px solid var(--gray2)', flexShrink: 0,
+                            }} />
+                          ) : (
+                            <div style={{
+                              width: 56, height: 56, borderRadius: 6,
+                              border: '1px solid var(--gray2)', background: '#fff', flexShrink: 0,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 10, fontWeight: 800, color: 'var(--red)',
+                            }}>PDF</div>
+                          )}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{
                               fontSize: 12, fontWeight: 700, color: 'var(--navy)',
@@ -414,10 +466,10 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
                         <>
                           <div style={{ fontSize: 22, marginBottom: 4 }}>🪪</div>
                           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>
-                            학생증 사진으로 자동 입력
+                            학생증으로 수령인 정보 자동 입력
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--gray5)' }}>
-                            학생증을 올리면 이름·학번을 자동으로 인식합니다
+                            학생증(JPG·PNG·PDF)을 올리면 이름·학번·소속을 자동 인식합니다
                           </div>
                         </>
                       )}

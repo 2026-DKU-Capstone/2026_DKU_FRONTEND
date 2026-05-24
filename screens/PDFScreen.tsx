@@ -43,6 +43,9 @@ export default function PDFScreen() {
   const [downloaded, setDownloaded] = useState(false);
   const [toast, setToast] = useState('');
 
+  // #3 연속 작성: 업로드한 증빙 큐에서 현재 위치 (여러 건 업로드 시에만 사용)
+  const [queuePos, setQueuePos] = useState<{ index: number; total: number } | null>(null);
+
   useEffect(() => {
     const name = sessionStorage.getItem('formName');
     if (name) setFormName(name);
@@ -78,6 +81,13 @@ export default function PDFScreen() {
 
     const evidenceId = sessionStorage.getItem('evidenceId');
     if (evidenceId) setDocNumber(`#${new Date().getFullYear()}-${evidenceId.padStart(4, '0')}`);
+
+    // #3 연속 작성: 여러 건 업로드한 경우 큐 내 현재 위치 파악
+    try {
+      const q = JSON.parse(sessionStorage.getItem('evidenceQueue') ?? '[]');
+      const idx = parseInt(sessionStorage.getItem('queueIndex') ?? '0', 10);
+      if (Array.isArray(q) && q.length > 1) setQueuePos({ index: idx, total: q.length });
+    } catch { /* 무시 */ }
   }, []);
 
   async function handleDownload() {
@@ -102,6 +112,14 @@ export default function PDFScreen() {
       const imageFields: Record<string, string> = { '영수증': 'evidence' };
       // 사용자가 PhotoScreen에서 올린 사진(예: 학생증)도 함께. 같은 키면 사용자 입력이 덮어씀.
       photos.forEach(p => { imageFields[p.label] = p.filePath; });
+      // doc-review에서 올린 학생증을 양식의 '학생증 부착' 란에 부착 (영수증 부착과 동일 방식)
+      try {
+        const scRaw = sessionStorage.getItem('studentCardPhoto');
+        if (scRaw) {
+          const sc: { label?: string; filePath?: string } = JSON.parse(scRaw);
+          if (sc.filePath) imageFields[sc.label || '학생증'] = sc.filePath;
+        }
+      } catch { /* 무시 */ }
 
       const err = await downloadDocument({ evidenceId, formId, filledFields, userInputFields, imageFields, formName });
       if (err) {
@@ -225,9 +243,27 @@ export default function PDFScreen() {
 
   // #9 추가 증빙서류 작성: 현재 문서 상태를 초기화하고 Step 1로 이동 (같은 사업명·그룹은 유지)
   function startNewDocument() {
-    ['evidenceId', 'availableForms', 'formId', 'formName', 'filledFields', 'userInputFields', 'selectedFormIds']
+    ['evidenceId', 'availableForms', 'formId', 'formName', 'filledFields', 'missingFields',
+     'userInputFields', 'selectedFormIds', 'evidenceQueue', 'queueIndex', 'studentCardPhoto']
       .forEach(k => sessionStorage.removeItem(k));
     router.push('/receipt');
+  }
+
+  // #3 연속 작성: 업로드한 다음 증빙으로 이어서 진행 (영수증 재선택 없이 양식 추천부터)
+  function goToNextInQueue() {
+    try {
+      const q = JSON.parse(sessionStorage.getItem('evidenceQueue') ?? '[]');
+      const idx = parseInt(sessionStorage.getItem('queueIndex') ?? '0', 10);
+      const next = idx + 1;
+      if (!Array.isArray(q) || next >= q.length) return;
+      // 다음 증빙으로 전환 + 현재 문서 작성 상태 초기화 (사업명·그룹·큐는 유지)
+      sessionStorage.setItem('queueIndex', String(next));
+      sessionStorage.setItem('evidenceId', String(q[next].evidenceId));
+      sessionStorage.setItem('availableForms', JSON.stringify(q[next].availableForms));
+      ['formId', 'formName', 'filledFields', 'missingFields', 'userInputFields', 'selectedFormIds', 'studentCardPhoto']
+        .forEach(k => sessionStorage.removeItem(k));
+      router.push('/form-recommend');
+    } catch { /* 무시 */ }
   }
 
   return (
@@ -600,27 +636,59 @@ export default function PDFScreen() {
             border: '1px solid #C8D6E8', borderRadius: 12,
             padding: '18px 20px',
           }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 5 }}>새 문서 작성</div>
-            <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 10 }}>
-              같은 사업의 다른 지출결의서를 작성하시겠습니까?
-            </div>
-            <button
-              onClick={startNewDocument}
-              style={{
-                background: 'var(--navy)', color: '#fff', border: 'none',
-                borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >+ 추가 증빙서류 작성</button>
-            <button
-              onClick={() => router.push('/expense-board')}
-              style={{
-                marginLeft: 8,
-                background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
-                borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >목록으로</button>
+            {queuePos && queuePos.index + 1 < queuePos.total ? (
+              /* #3 업로드한 다음 증빙이 남아 있으면 이어서 작성 */
+              <>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 5 }}>
+                  다음 증빙서류 작성
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 10 }}>
+                  업로드한 증빙 {queuePos.total}건 중 {queuePos.index + 1}번째까지 작성했습니다.
+                  영수증 재선택 없이 다음 증빙서류로 이어서 작성하세요.
+                </div>
+                <button
+                  onClick={goToNextInQueue}
+                  style={{
+                    background: 'var(--navy)', color: '#fff', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >다음 증빙서류 작성 ({queuePos.index + 2}/{queuePos.total}) →</button>
+                <button
+                  onClick={() => router.push('/expense-board')}
+                  style={{
+                    marginLeft: 8,
+                    background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >목록으로</button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)', marginBottom: 5 }}>새 문서 작성</div>
+                <div style={{ fontSize: 11, color: 'var(--gray5)', marginBottom: 10 }}>
+                  {queuePos ? '업로드한 증빙을 모두 작성했습니다. ' : ''}같은 사업의 다른 지출결의서를 작성하시겠습니까?
+                </div>
+                <button
+                  onClick={startNewDocument}
+                  style={{
+                    background: 'var(--navy)', color: '#fff', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >+ 추가 증빙서류 작성</button>
+                <button
+                  onClick={() => router.push('/expense-board')}
+                  style={{
+                    marginLeft: 8,
+                    background: 'var(--gray2)', color: 'var(--gray5)', border: 'none',
+                    borderRadius: 6, padding: '5px 13px', fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >목록으로</button>
+              </>
+            )}
           </div>
         </div>
       </div>

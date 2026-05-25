@@ -40,6 +40,11 @@ const PAYER_PLACEHOLDER: Record<PayerKey, string> = {
   phone:       '010-1234-5678',
 };
 
+// 학생증으로 채우는 '수령인' 양식 필드인지 판별. (지출인은 그룹에서 받으므로 제외)
+function isRecipientFormField(field: string): boolean {
+  return /수령인|수령자/.test(field) && !/사진|부착|이미지|학생증/.test(field);
+}
+
 type Stage = 'loading' | 'need-input' | 'saving';
 
 export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
@@ -50,7 +55,8 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
   const [payer, setPayer] = useState<PayerInfo>({ name: '', affiliation: '', studentId: '', phone: '' });
   const [payerMissing, setPayerMissing] = useState<PayerKey[]>([]);
 
-  const [formMissing, setFormMissing] = useState<string[]>([]);
+  const [formMissing, setFormMissing] = useState<string[]>([]);                  // 비-수령인 필드 → 수기 입력
+  const [recipientFormMissing, setRecipientFormMissing] = useState<string[]>([]); // 수령인 필드 → 학생증으로 채움
   const [formValues, setFormValues] = useState<Record<string, string>>({});
 
   // 학생증 업로드
@@ -120,7 +126,8 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
 
       setPayer(currentPayer);
       setPayerMissing(missingPayer);
-      setFormMissing(stillMissing);
+      setRecipientFormMissing(stillMissing.filter(isRecipientFormField));
+      setFormMissing(stillMissing.filter(k => !isRecipientFormField(k)));
       const initVals: Record<string, string> = {};
       stillMissing.forEach(k => { initVals[k] = userInput[k] ?? ''; });
       setFormValues(initVals);
@@ -133,15 +140,14 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
     };
   }, [open]);
 
-  // 학생증으로 추출한 값을 양식의 수령인 필드(formMissing 중 '수령인/수령자')에도 채운다.
+  // 학생증으로 추출한 값을 양식의 수령인 필드(recipientFormMissing)에 채운다.
   function applyToRecipientFormFields(info: Partial<PayerInfo>) {
     setFormValues(prev => {
       const next = { ...prev };
-      formMissing.forEach(f => {
-        if (!/수령인|수령자/.test(f) || /사진|부착|이미지|학생증/.test(f)) return;
+      recipientFormMissing.forEach(f => {
         let v = '';
         if (f.includes('이름') || f.includes('성명')) v = info.name ?? '';
-        else if (f.includes('소속')) v = info.affiliation ?? '';
+        else if (f.includes('소속') || f.includes('학과') || f.includes('학부')) v = info.affiliation ?? '';
         else if (f.includes('학번') || f.includes('사번')) v = info.studentId ?? '';
         else if (f.includes('전화') || f.includes('연락')) v = info.phone ?? '';
         else v = info.name ?? '';
@@ -218,13 +224,18 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
   }
 
   async function handleSubmit() {
+    // 수령인 관련 정보가 필요하면 무조건 학생증을 먼저 받는다. (OCR 후 부족분만 수기 입력)
+    if (recipientFormMissing.length > 0 && !cardFileName) {
+      setError('학생증을 먼저 업로드해 주세요. 인식 후 부족한 항목만 입력하면 됩니다.');
+      return;
+    }
     for (const k of payerMissing) {
       if (!(payer[k] ?? '').trim()) {
         setError(`${PAYER_LABEL[k]}을(를) 입력해 주세요.`);
         return;
       }
     }
-    for (const k of formMissing) {
+    for (const k of [...recipientFormMissing, ...formMissing]) {
       if (!(formValues[k] ?? '').trim()) {
         setError(`${k} 항목을 입력해 주세요.`);
         return;
@@ -246,10 +257,10 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
         }
       }
 
-      if (formMissing.length > 0) {
+      if (formMissing.length > 0 || recipientFormMissing.length > 0) {
         const userInputRaw = sessionStorage.getItem('userInputFields');
         const userInput: Record<string, string> = userInputRaw ? JSON.parse(userInputRaw) : {};
-        formMissing.forEach(k => { userInput[k] = formValues[k]; });
+        [...formMissing, ...recipientFormMissing].forEach(k => { userInput[k] = formValues[k]; });
         sessionStorage.setItem('userInputFields', JSON.stringify(userInput));
       }
 
@@ -264,12 +275,12 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
 
   const isLoading = stage === 'loading' || stage === 'saving';
 
-  // 표시할 수령인 필드: 원래 누락된 것 + 학생증으로 추출되어 추가된 것
+  // 그룹에 등록할 지출인 정보 중 누락된 항목 (학생증으로 채운 뒤 그룹에 저장)
   const visiblePayerKeys: PayerKey[] = (['studentId', 'name', 'affiliation', 'phone'] as PayerKey[])
-    .filter(k => payerMissing.includes(k) || cardExtracted.has(k));
+    .filter(k => payerMissing.includes(k));
 
-  // 수령인 정보는 무조건 학생증으로 입력받는다: 수령인 정보 섹션이 보이면 항상 노출
-  const showCardUpload = visiblePayerKeys.length > 0;
+  // 수령인 정보(그룹 지출인 정보 또는 양식 수령인 필드)가 필요하면 항상 학생증 업로드를 노출한다.
+  const showCardUpload = visiblePayerKeys.length > 0 || recipientFormMissing.length > 0;
 
   return (
     <div
@@ -367,7 +378,7 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
               )}
             </div>
 
-            {visiblePayerKeys.length > 0 && (
+            {showCardUpload && (
               <div style={{ marginBottom: formMissing.length > 0 ? 18 : 0 }}>
                 <div style={{
                   fontSize: 10, fontWeight: 800, color: 'var(--gray4)',
@@ -553,6 +564,48 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
                     );
                   })}
                 </div>
+
+                {recipientFormMissing.length > 0 && (
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                    marginTop: visiblePayerKeys.length > 0 ? 10 : 0,
+                  }}>
+                    {recipientFormMissing.map(k => {
+                      const extracted = cardExtracted.size > 0 && (formValues[k] ?? '').trim().length > 0;
+                      return (
+                        <div key={k}>
+                          <label style={{
+                            display: 'flex', alignItems: 'center',
+                            fontSize: 11, fontWeight: 700, color: 'var(--gray5)', marginBottom: 5,
+                          }}>
+                            {k}
+                            {extracted && (
+                              <span style={{
+                                marginLeft: 'auto', fontSize: 9, fontWeight: 800,
+                                padding: '2px 6px', borderRadius: 4,
+                                background: '#fff', color: 'var(--blue)',
+                                border: '1px solid #C8D6E8', letterSpacing: '0.3px',
+                              }}>✓ 학생증에서 추출</span>
+                            )}
+                          </label>
+                          <input
+                            value={formValues[k] ?? ''}
+                            onChange={e => setFormValues(v => ({ ...v, [k]: e.target.value }))}
+                            placeholder={`${k} 값을 입력하세요`}
+                            style={{
+                              width: '100%',
+                              border: extracted ? '1.5px solid var(--blue)' : '1.5px solid var(--gray2)',
+                              borderRadius: 8, padding: '10px 12px', fontSize: 13,
+                              color: 'var(--navy)',
+                              background: extracted ? 'var(--blue-pale)' : '#fff',
+                              outline: 'none',
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

@@ -27,6 +27,7 @@ export default function ComplianceScreen() {
   const [checks, setChecks] = useState<CheckItem[]>([]);
 
   useEffect(() => {
+    sessionStorage.setItem('lastStep', '4');
     const filledRaw = sessionStorage.getItem('filledFields');
     const missingRaw = sessionStorage.getItem('missingFields');
     const userInputRaw = sessionStorage.getItem('userInputFields');

@@ -40,6 +40,10 @@ export default function ReceiptScreen() {
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  React.useEffect(() => {
+    sessionStorage.setItem('lastStep', '1');
+  }, []);
+
   const handlePicked = (picked: FileList | null) => {
     if (!picked || picked.length === 0) return;
     // 여러 장을 한 번에 올리면 큐에 추가해 한 건씩 순서대로 작성한다 (#3 연속 작성)

@@ -40,6 +40,7 @@ export default function PDFScreen() {
   const [queuePos, setQueuePos] = useState<{ index: number; total: number } | null>(null);
 
   useEffect(() => {
+    sessionStorage.setItem('lastStep', '5');
     const name = sessionStorage.getItem('formName');
     if (name) setFormName(name);
 

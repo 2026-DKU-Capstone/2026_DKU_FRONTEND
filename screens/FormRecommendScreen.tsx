@@ -23,6 +23,7 @@ export default function FormRecommendScreen() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    sessionStorage.setItem('lastStep', '2');
     const raw = sessionStorage.getItem('availableForms');
     if (!raw) {
       setError('이전 단계의 분석 정보가 없습니다. 처음부터 진행해 주세요.');

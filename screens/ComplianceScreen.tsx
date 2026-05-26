@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,11 +27,11 @@ export default function ComplianceScreen() {
   const [checks, setChecks] = useState<CheckItem[]>([]);
 
   useEffect(() => {
-    sessionStorage.setItem('lastStep', '4');
-    const filledRaw = sessionStorage.getItem('filledFields');
-    const missingRaw = sessionStorage.getItem('missingFields');
-    const userInputRaw = sessionStorage.getItem('userInputFields');
-    const name = sessionStorage.getItem('formName');
+    localStorage.setItem('lastStep', '4');
+    const filledRaw = localStorage.getItem('filledFields');
+    const missingRaw = localStorage.getItem('missingFields');
+    const userInputRaw = localStorage.getItem('userInputFields');
+    const name = localStorage.getItem('formName');
     if (name) setFormName(name);
 
     const filled: Record<string, string> = filledRaw ? JSON.parse(filledRaw) : {};
@@ -94,9 +94,9 @@ export default function ComplianceScreen() {
       ? { ...r, value: editValue, violated: editValue ? false : r.violated, violationMsg: editValue ? undefined : r.violationMsg }
       : r
     ));
-    const userInput = JSON.parse(sessionStorage.getItem('userInputFields') ?? '{}');
+    const userInput = JSON.parse(localStorage.getItem('userInputFields') ?? '{}');
     userInput[editingKey] = editValue;
-    sessionStorage.setItem('userInputFields', JSON.stringify(userInput));
+    localStorage.setItem('userInputFields', JSON.stringify(userInput));
     setEditingKey(null);
   }
 

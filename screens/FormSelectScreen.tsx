@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 
@@ -57,7 +57,7 @@ export default function FormSelectScreen({ onNext, onPrev }: FormSelectScreenPro
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('availableForms');
+    const raw = localStorage.getItem('availableForms');
     if (raw) {
       try {
         const parsed: AvailableForm[] = JSON.parse(raw);
@@ -73,8 +73,8 @@ export default function FormSelectScreen({ onNext, onPrev }: FormSelectScreenPro
   function handleConfirm() {
     const selected = forms[selectedIdx];
     if (selected) {
-      sessionStorage.setItem('formId', String(selected.formId));
-      sessionStorage.setItem('formName', selected.formName);
+      localStorage.setItem('formId', String(selected.formId));
+      localStorage.setItem('formName', selected.formName);
     }
     onNext?.();
   }

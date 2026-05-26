@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -23,8 +23,8 @@ export default function FormRecommendScreen() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    sessionStorage.setItem('lastStep', '2');
-    const raw = sessionStorage.getItem('availableForms');
+    localStorage.setItem('lastStep', '2');
+    const raw = localStorage.getItem('availableForms');
     if (!raw) {
       setError('이전 단계의 분석 정보가 없습니다. 처음부터 진행해 주세요.');
       return;
@@ -37,7 +37,7 @@ export default function FormRecommendScreen() {
   }, []);
 
   async function goNext() {
-    const evidenceId = sessionStorage.getItem('evidenceId');
+    const evidenceId = localStorage.getItem('evidenceId');
     if (!evidenceId || selectedId == null) {
       setError('양식을 선택해 주세요.');
       return;
@@ -52,10 +52,10 @@ export default function FormRecommendScreen() {
         const data: { results: { formId: number; formName: string; filledFields: Record<string, string>; missingFields: string[] }[] } = await res.json();
         const first = data.results[0];
         if (first) {
-          sessionStorage.setItem('filledFields', JSON.stringify(first.filledFields));
-          sessionStorage.setItem('missingFields', JSON.stringify(first.missingFields));
-          sessionStorage.setItem('formId', String(first.formId));
-          sessionStorage.setItem('formName', first.formName);
+          localStorage.setItem('filledFields', JSON.stringify(first.filledFields));
+          localStorage.setItem('missingFields', JSON.stringify(first.missingFields));
+          localStorage.setItem('formId', String(first.formId));
+          localStorage.setItem('formName', first.formName);
         }
         router.push('/doc-review');
       } else {

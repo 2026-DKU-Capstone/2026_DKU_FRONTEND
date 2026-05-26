@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -41,7 +41,7 @@ export default function ReceiptScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    sessionStorage.setItem('lastStep', '1');
+    localStorage.setItem('lastStep', '1');
   }, []);
 
   const handlePicked = (picked: FileList | null) => {
@@ -63,8 +63,8 @@ export default function ReceiptScreen() {
     setError(''); setAnalyzing(true);
     try {
       const groupId = getGroupId();
-      const businessName = sessionStorage.getItem('currentBusinessName');
-      const itemName = sessionStorage.getItem('currentItemName');
+      const businessName = localStorage.getItem('currentBusinessName');
+      const itemName = localStorage.getItem('currentItemName');
       // 업로드한 파일을 한 건씩 OCR 분석해 큐로 만든다. (#3 연속 작성)
       const queue: { evidenceId: number; availableForms: AvailableForm[]; fileName: string }[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -88,12 +88,12 @@ export default function ReceiptScreen() {
       // (수령인은 문서마다 새 학생증을 받아야 하므로, 직전 문서의 studentCardPhoto·userInputFields가
       //  남아 수령인 필드가 '이미 채워짐'으로 보여 업로드가 생략되는 것을 막는다.)
       ['studentCardPhoto', 'userInputFields', 'missingFields', 'filledFields', 'formId', 'formName', 'selectedFormIds']
-        .forEach(k => sessionStorage.removeItem(k));
+        .forEach(k => localStorage.removeItem(k));
       // 큐 저장 + 첫 번째 증빙으로 시작
-      sessionStorage.setItem('evidenceQueue', JSON.stringify(queue));
-      sessionStorage.setItem('queueIndex', '0');
-      sessionStorage.setItem('evidenceId', String(queue[0].evidenceId));
-      sessionStorage.setItem('availableForms', JSON.stringify(queue[0].availableForms));
+      localStorage.setItem('evidenceQueue', JSON.stringify(queue));
+      localStorage.setItem('queueIndex', '0');
+      localStorage.setItem('evidenceId', String(queue[0].evidenceId));
+      localStorage.setItem('availableForms', JSON.stringify(queue[0].availableForms));
       router.push('/form-recommend');
     } catch {
       setError('서버에 연결할 수 없습니다.');

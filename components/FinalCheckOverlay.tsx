@@ -107,8 +107,8 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
         .filter(k => !(currentPayer[k] ?? '').trim());
 
       // 2. 양식 필수 항목 누락 여부
-      const missingRaw = sessionStorage.getItem('missingFields');
-      const userInputRaw = sessionStorage.getItem('userInputFields');
+      const missingRaw = localStorage.getItem('missingFields');
+      const userInputRaw = localStorage.getItem('userInputFields');
       const missing: string[] = missingRaw ? JSON.parse(missingRaw) : [];
       const userInput: Record<string, string> = userInputRaw ? JSON.parse(userInputRaw) : {};
       const stillMissing = missing.filter(k => !(userInput[k] ?? '').trim());
@@ -258,10 +258,10 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
       }
 
       if (formMissing.length > 0 || recipientFormMissing.length > 0) {
-        const userInputRaw = sessionStorage.getItem('userInputFields');
+        const userInputRaw = localStorage.getItem('userInputFields');
         const userInput: Record<string, string> = userInputRaw ? JSON.parse(userInputRaw) : {};
         [...formMissing, ...recipientFormMissing].forEach(k => { userInput[k] = formValues[k]; });
-        sessionStorage.setItem('userInputFields', JSON.stringify(userInput));
+        localStorage.setItem('userInputFields', JSON.stringify(userInput));
       }
 
       onProceedRef.current();

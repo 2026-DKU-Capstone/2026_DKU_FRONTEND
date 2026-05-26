@@ -214,7 +214,7 @@ export default function FinalCheckOverlay({ open, onClose, onProceed }: Props) {
         if (up.ok) {
           const photo: { filePath: string } = await up.json();
           if (photo?.filePath) {
-            sessionStorage.setItem('studentCardPhoto', JSON.stringify({ label: '학생증', filePath: photo.filePath }));
+            localStorage.setItem('studentCardPhoto', JSON.stringify({ label: '학생증', filePath: photo.filePath }));
           }
         }
       } catch { /* 부착용 저장 실패는 무시 (OCR은 이미 시도됨) */ }

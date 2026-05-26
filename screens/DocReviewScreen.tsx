@@ -113,6 +113,14 @@ export default function DocReviewScreen() {
   }, 0);
   const showSum = rows.some(r => /금액|비$|료$/.test(r.key));
 
+  const isLedger = formName.includes('수입지출관리대장');
+  const ledgerCols = isLedger ? rows.map(r => ({
+    key: r.key,
+    values: r.value.split(',').map(v => v.trim()),
+    isAi: r.isAi,
+  })) : [];
+  const ledgerRowCount = ledgerCols.length > 0 ? Math.max(...ledgerCols.map(c => c.values.length)) : 0;
+
   const aiCount = rows.filter(r => r.isAi).length;
   const missingCount = rows.filter(r => r.missing && !r.value).length;
 
@@ -152,6 +160,49 @@ export default function DocReviewScreen() {
             <div style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: 'var(--gray4)' }}>
               증빙 업로드 후 자동 입력된 내용이 표시됩니다.
             </div>
+          ) : isLedger ? (
+            <>
+              <div style={{ overflowX: 'auto', marginBottom: 18 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: 'var(--navy)' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--gray1)' }}>
+                      <th style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--gray4)', fontSize: 11, borderBottom: '2px solid var(--navy)', borderRight: '1px solid var(--gray2)', textAlign: 'center' }}>번호</th>
+                      {ledgerCols.map(c => (
+                        <th key={c.key} style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--gray4)', fontSize: 11, borderBottom: '2px solid var(--navy)', borderRight: '1px solid var(--gray2)', textAlign: 'center', whiteSpace: 'nowrap', position: 'relative' }}>
+                          {c.key}
+                          {c.isAi && (
+                            <span style={{ marginLeft: 4, fontSize: 9, fontWeight: 800, color: 'var(--blue)', background: '#fff', padding: '1px 5px', borderRadius: 3, border: '1px solid var(--blue-pale)' }}>AI</span>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: ledgerRowCount }).map((_, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--gray2)', background: i % 2 === 0 ? '#fff' : 'var(--gray1)' }}>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--gray4)', fontSize: 11, borderRight: '1px solid var(--gray2)' }}>{i + 1}</td>
+                        {ledgerCols.map(c => {
+                          const val = c.values[i] ?? '';
+                          return (
+                            <td key={c.key} style={{ padding: '8px 10px', textAlign: /금액|잔액/.test(c.key) ? 'right' : 'center', color: val ? 'var(--navy)' : 'var(--gray3)', fontFamily: /금액|잔액/.test(c.key) ? 'var(--font-mono)' : 'inherit', borderRight: '1px solid var(--gray2)' }}>
+                              {val || '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: 'flex', gap: 24, padding: '18px 0', borderTop: '2px solid var(--navy)', marginTop: 18 }}>
+                {['신청인', '팀장', '부서장'].map((t, i) => (
+                  <div key={t} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: 'var(--gray4)' }}>
+                    {t}
+                    <div style={{ marginTop: 26, borderTop: '1px solid var(--gray3)', paddingTop: 5, fontSize: 11, color: i === 0 ? 'var(--navy)' : 'var(--gray3)', fontWeight: i === 0 ? 600 : 400 }}>{i === 0 ? userName : '(미결재)'}</div>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <>
               {Array.from({ length: Math.ceil(rows.length / 2) }).map((_, idx) => {

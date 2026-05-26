@@ -100,7 +100,7 @@ export default function ExpenseBoardScreen() {
     return Array.from(byId.values());
   })();
 
-  function handleDraftClick(item: EvidenceItem) {
+  async function handleDraftClick(item: EvidenceItem) {
     // 증빙별로 저장된 스냅샷이 있으면 해당 단계로 복귀
     const saved = localStorage.getItem(`eid_${item.evidenceId}`);
     if (saved) {
@@ -126,11 +126,27 @@ export default function ExpenseBoardScreen() {
     const lastStep = localStorage.getItem('lastStep');
     if (storedEvidenceId === String(item.evidenceId) && lastStep && LAST_STEP_ROUTES[lastStep]) {
       router.push(LAST_STEP_ROUTES[lastStep]);
-    } else {
-      localStorage.setItem('evidenceId', String(item.evidenceId));
-      if (item.businessName) localStorage.setItem('currentBusinessName', item.businessName);
-      router.push('/receipt');
+      return;
     }
+    // 스냅샷·세션 모두 없는 경우: /receipt로 가면 새 증빙이 생성되므로
+    // 그룹 양식 목록을 가져와 /form-recommend(2단계)부터 재개한다.
+    localStorage.setItem('evidenceId', String(item.evidenceId));
+    if (item.businessName) localStorage.setItem('currentBusinessName', item.businessName);
+    const groupId = getGroupId();
+    if (groupId) {
+      try {
+        const res = await apiFetch(`/api/forms?groupId=${groupId}`);
+        if (res.ok) {
+          const forms: Array<{ formId: number; formName: string; description?: string; paymentType?: string; fields?: string[] }> = await res.json();
+          localStorage.setItem('availableForms', JSON.stringify(
+            forms.map(f => ({ formId: f.formId, formName: f.formName, description: f.description, paymentType: f.paymentType, fields: f.fields ?? [], matchScore: 1.0 }))
+          ));
+          router.push('/form-recommend');
+          return;
+        }
+      } catch { /* fall through */ }
+    }
+    router.push('/form-recommend');
   }
 
   async function handleApprovedClick(item: EvidenceItem) {

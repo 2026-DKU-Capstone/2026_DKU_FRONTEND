@@ -67,7 +67,7 @@ export default function AppNav() {
 
   useEffect(() => {
     if (!isWorkflow) return;
-    const stored = sessionStorage.getItem('currentBusinessName');
+    const stored = localStorage.getItem('currentBusinessName');
     if (stored) setBizName(stored);
   }, [isWorkflow, pathname]);
 

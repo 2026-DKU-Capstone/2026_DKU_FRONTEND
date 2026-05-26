@@ -89,7 +89,16 @@ export default function ExpenseBoardScreen() {
     }).finally(() => setLoading(false));
   }, []);
 
-  const visible = items.filter(i => i.status === 'draft' || i.status === 'approved');
+  // 같은 evidenceId에 draft + approved가 동시에 있으면 approved만 표시
+  const visible = (() => {
+    const filtered = items.filter(i => i.status === 'draft' || i.status === 'approved');
+    const byId = new Map<number, EvidenceItem>();
+    for (const item of filtered) {
+      const existing = byId.get(item.evidenceId);
+      if (!existing || item.status === 'approved') byId.set(item.evidenceId, item);
+    }
+    return Array.from(byId.values());
+  })();
 
   function handleDraftClick(item: EvidenceItem) {
     // 증빙별로 저장된 스냅샷이 있으면 해당 단계로 복귀
@@ -158,10 +167,14 @@ export default function ExpenseBoardScreen() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget?.requestId) return;
+    if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await apiFetch(`/api/approvals/${deleteTarget.requestId}`, { method: 'DELETE' });
+      // 작성중(draft)은 evidence 삭제, 완료(approved)는 approval 삭제
+      const url = deleteTarget.requestId
+        ? `/api/approvals/${deleteTarget.requestId}`
+        : `/api/evidence/${deleteTarget.evidenceId}`;
+      const res = await apiFetch(url, { method: 'DELETE' });
       if (res.ok || res.status === 204) {
         setItems(prev => prev.filter(i => i.evidenceId !== deleteTarget.evidenceId));
         setDeleteTarget(null);
@@ -216,7 +229,7 @@ export default function ExpenseBoardScreen() {
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--gray2)', overflow: 'hidden' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isTopApprover ? '60px 1fr 120px 100px 50px' : '60px 1fr 120px 100px',
+          gridTemplateColumns: '60px 1fr 120px 100px 50px',
           alignItems: 'center', gap: 12,
           padding: '14px 20px',
           borderBottom: '1px solid var(--gray1)',
@@ -228,7 +241,7 @@ export default function ExpenseBoardScreen() {
           <div>사업명</div>
           <div>상태</div>
           <div>최근 수정</div>
-          {isTopApprover && <div></div>}
+          <div></div>
         </div>
 
         {loading ? (
@@ -250,7 +263,7 @@ export default function ExpenseBoardScreen() {
               onClick={() => isDraft ? handleDraftClick(item) : handleApprovedClick(item)}
               style={{
                 display: 'grid',
-                gridTemplateColumns: isTopApprover ? '60px 1fr 120px 100px 50px' : '60px 1fr 120px 100px',
+                gridTemplateColumns: '60px 1fr 120px 100px 50px',
                 alignItems: 'center', gap: 12,
                 padding: '14px 20px',
                 borderBottom: i === visible.length - 1 ? 'none' : '1px solid var(--gray1)',
@@ -275,21 +288,17 @@ export default function ExpenseBoardScreen() {
               <div style={{ fontSize: 11, color: 'var(--gray4)' }}>
                 {formatDate(item.updatedAt ?? item.createdAt)}
               </div>
-              {isTopApprover && (
-                <div onClick={e => e.stopPropagation()}>
-                  {item.requestId && (
-                    <button
-                      onClick={() => setDeleteTarget(item)}
-                      style={{
-                        background: 'none', border: '1px solid var(--red)',
-                        color: 'var(--red)', borderRadius: 4,
-                        padding: '2px 8px', fontSize: 10, fontWeight: 600,
-                        cursor: 'pointer', fontFamily: 'inherit',
-                      }}
-                    >삭제</button>
-                  )}
-                </div>
-              )}
+              <div onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={() => setDeleteTarget(item)}
+                  style={{
+                    background: 'none', border: '1px solid var(--red)',
+                    color: 'var(--red)', borderRadius: 4,
+                    padding: '2px 8px', fontSize: 10, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >삭제</button>
+              </div>
             </div>
           );
         })}

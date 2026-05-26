@@ -142,6 +142,7 @@ export default function PDFScreen() {
 
       if (res.ok) {
         const data = await res.json().catch(() => null);
+        localStorage.removeItem(`eid_${evidenceId}`);
         ['evidenceId', 'availableForms', 'filledFields', 'formId', 'lastStep'].forEach(
           key => localStorage.removeItem(key)
         );

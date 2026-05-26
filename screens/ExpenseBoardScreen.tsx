@@ -92,12 +92,32 @@ export default function ExpenseBoardScreen() {
   const visible = items.filter(i => i.status === 'draft' || i.status === 'approved');
 
   function handleDraftClick(item: EvidenceItem) {
+    // 증빙별로 저장된 스냅샷이 있으면 해당 단계로 복귀
+    const saved = localStorage.getItem(`eid_${item.evidenceId}`);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.lastStep && LAST_STEP_ROUTES[data.lastStep]) {
+          localStorage.setItem('evidenceId', String(item.evidenceId));
+          localStorage.setItem('lastStep', data.lastStep);
+          if (data.availableForms) localStorage.setItem('availableForms', data.availableForms);
+          if (data.filledFields) localStorage.setItem('filledFields', data.filledFields);
+          if (data.missingFields) localStorage.setItem('missingFields', data.missingFields);
+          if (data.formId) localStorage.setItem('formId', data.formId);
+          if (data.formName) localStorage.setItem('formName', data.formName);
+          if (data.userInputFields) localStorage.setItem('userInputFields', data.userInputFields);
+          if (item.businessName) localStorage.setItem('currentBusinessName', item.businessName);
+          router.push(LAST_STEP_ROUTES[data.lastStep]);
+          return;
+        }
+      } catch { /* fall through */ }
+    }
+    // 스냅샷 없으면 현재 세션 generic 키 확인
     const storedEvidenceId = localStorage.getItem('evidenceId');
     const lastStep = localStorage.getItem('lastStep');
     if (storedEvidenceId === String(item.evidenceId) && lastStep && LAST_STEP_ROUTES[lastStep]) {
       router.push(LAST_STEP_ROUTES[lastStep]);
     } else {
-      // localStorage 데이터 없거나 다른 증빙 → 처음부터
       localStorage.setItem('evidenceId', String(item.evidenceId));
       if (item.businessName) localStorage.setItem('currentBusinessName', item.businessName);
       router.push('/receipt');

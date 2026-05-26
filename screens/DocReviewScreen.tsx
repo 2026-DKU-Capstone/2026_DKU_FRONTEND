@@ -14,6 +14,25 @@ interface FieldRow {
   missing: boolean;    // user must input
 }
 
+const isDateKey = (k: string) => /날짜|일자|일시|기간/.test(k) || k.endsWith('일');
+
+function toDateInputValue(val: string): string {
+  const short = val.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+  if (short) return `20${short[1]}-${short[2]}-${short[3]}`;
+  const full = val.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (full) return `${full[1]}-${full[2]}-${full[3]}`;
+  const kor = val.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+  if (kor) return `${kor[1]}-${kor[2].padStart(2, '0')}-${kor[3].padStart(2, '0')}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  return '';
+}
+
+function fromDateInputValue(val: string): string {
+  const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return val;
+  return `${m[1].slice(2)}/${m[2]}/${m[3]}`;
+}
+
 export default function DocReviewScreen() {
   const router = useRouter();
   const userName = getUserInfo()?.name ?? '';
@@ -86,21 +105,18 @@ export default function DocReviewScreen() {
 
   function startEdit(row: FieldRow) {
     setEditingKey(row.key);
-    setEditValue(row.value);
+    setEditValue(isDateKey(row.key) ? toDateInputValue(row.value) : row.value);
   }
 
   function commitEdit() {
     if (editingKey == null) return;
+    const finalValue = isDateKey(editingKey) ? fromDateInputValue(editValue) : editValue;
     setRows(prev => prev.map(r => {
       if (r.key !== editingKey) return r;
-      const next: FieldRow = { ...r, value: editValue, isAi: false };
-      return next;
+      return { ...r, value: finalValue, isAi: false };
     }));
-    // user input fields 저장 (filledFields 도 사용자가 수정 시 user override 로 분류)
-    const updated: Record<string, string> = {};
-    rows.forEach(r => { updated[r.key] = r.key === editingKey ? editValue : r.value; });
     const userInput = JSON.parse(localStorage.getItem('userInputFields') ?? '{}');
-    userInput[editingKey] = editValue;
+    userInput[editingKey] = finalValue;
     localStorage.setItem('userInputFields', JSON.stringify(userInput));
     setEditingKey(null);
   }
@@ -241,18 +257,33 @@ export default function DocReviewScreen() {
                           }}
                         >
                           {editingKey === r.key ? (
-                            <input
-                              autoFocus
-                              value={editValue}
-                              onChange={e => setEditValue(e.target.value)}
-                              onBlur={commitEdit}
-                              onKeyDown={e => { if (e.key === 'Enter') commitEdit(); }}
-                              style={{
-                                border: 'none', background: 'transparent',
-                                width: '100%', fontFamily: 'inherit', fontSize: 13,
-                                color: 'var(--navy)', outline: 'none',
-                              }}
-                            />
+                            isDateKey(r.key) ? (
+                              <input
+                                autoFocus
+                                type="date"
+                                value={editValue}
+                                onChange={e => setEditValue(e.target.value)}
+                                onBlur={commitEdit}
+                                style={{
+                                  border: 'none', background: 'transparent',
+                                  fontFamily: 'inherit', fontSize: 13,
+                                  color: 'var(--navy)', outline: 'none',
+                                }}
+                              />
+                            ) : (
+                              <input
+                                autoFocus
+                                value={editValue}
+                                onChange={e => setEditValue(e.target.value)}
+                                onBlur={commitEdit}
+                                onKeyDown={e => { if (e.key === 'Enter') commitEdit(); }}
+                                style={{
+                                  border: 'none', background: 'transparent',
+                                  width: '100%', fontFamily: 'inherit', fontSize: 13,
+                                  color: 'var(--navy)', outline: 'none',
+                                }}
+                              />
+                            )
                           ) : (
                             <>
                               {r.value || (r.missing ? <span style={{ color: 'var(--gray3)' }}>입력하세요</span> : '')}

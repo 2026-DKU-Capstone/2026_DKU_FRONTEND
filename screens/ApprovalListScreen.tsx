@@ -46,6 +46,18 @@ function deriveTitle(a: Approval): string {
 
 function deriveAmount(a: Approval): string {
   const fields = a.filledFields ?? {};
+  if ((a.formName ?? '').includes('수입지출관리대장')) {
+    for (const [k, v] of Object.entries(fields)) {
+      if (k.includes('지출') && k.includes('금액')) {
+        const total = String(v).split(',')
+          .map(s => parseInt(s.replace(/[^\d]/g, ''), 10))
+          .filter(n => !isNaN(n) && n > 0)
+          .reduce((acc, n) => acc + n, 0);
+        return total > 0 ? `지출 ₩${total.toLocaleString()}` : '원장';
+      }
+    }
+    return '원장';
+  }
   for (const [k, v] of Object.entries(fields)) {
     if (/금액|합계/.test(k)) {
       const n = parseInt(String(v).replace(/[^\d-]/g, ''), 10);

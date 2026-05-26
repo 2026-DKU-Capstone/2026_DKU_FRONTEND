@@ -60,6 +60,7 @@ export default function ReceiptScreen() {
     try {
       const groupId = getGroupId();
       const businessName = sessionStorage.getItem('currentBusinessName');
+      const itemName = sessionStorage.getItem('currentItemName');
       // 업로드한 파일을 한 건씩 OCR 분석해 큐로 만든다. (#3 연속 작성)
       const queue: { evidenceId: number; availableForms: AvailableForm[]; fileName: string }[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -68,6 +69,7 @@ export default function ReceiptScreen() {
         fd.append('file', files[i].file);
         if (groupId) fd.append('groupId', String(groupId));
         if (businessName) fd.append('businessName', businessName);
+        if (itemName) fd.append('itemName', itemName);
         const res = await apiFetch('/api/evidence/analyze', { method: 'POST', body: fd });
         if (!res.ok) {
           const body = await res.json().catch(() => null);

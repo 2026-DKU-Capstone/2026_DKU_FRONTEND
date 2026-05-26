@@ -58,6 +58,7 @@ export default function ExpenseBoardScreen() {
   const [isTopApprover, setIsTopApprover] = useState(false);
   const [newBizOpen, setNewBizOpen] = useState(false);
   const [bizName, setBizName] = useState('');
+  const [itemName, setItemName] = useState('');
 
   // 완료 상세 모달
   const [detailOpen, setDetailOpen] = useState(false);
@@ -155,8 +156,14 @@ export default function ExpenseBoardScreen() {
   function startBiz() {
     if (!bizName.trim()) return;
     sessionStorage.setItem('currentBusinessName', bizName.trim());
+    if (itemName.trim()) {
+      sessionStorage.setItem('currentItemName', itemName.trim());
+    } else {
+      sessionStorage.removeItem('currentItemName');
+    }
     setNewBizOpen(false);
     setBizName('');
+    setItemName('');
     router.push('/receipt');
   }
 
@@ -269,19 +276,30 @@ export default function ExpenseBoardScreen() {
       </div>
 
       {/* 새 지출결의 모달 */}
-      <Modal open={newBizOpen} onClose={() => setNewBizOpen(false)} width={400}>
+      <Modal open={newBizOpen} onClose={() => { setNewBizOpen(false); setBizName(''); setItemName(''); }} width={400}>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>새 지출결의</div>
-        <div style={{ fontSize: 12, color: 'var(--gray4)', marginBottom: 18 }}>사업명을 입력해 주세요</div>
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 12, color: 'var(--gray4)', marginBottom: 18 }}>사업명과 지출 항목을 입력해 주세요</div>
+        <div style={{ marginBottom: 14 }}>
           <label style={fl}>사업명 <span style={{ color: 'var(--red)' }}>*</span></label>
           <input
-            style={fi} placeholder="예: 2024 동아리 행사비 정산"
+            style={fi} placeholder="예: 2025년 MT"
             value={bizName} onChange={e => setBizName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && startBiz()}
+            onKeyDown={e => e.key === 'Enter' && itemName.trim() === '' && startBiz()}
           />
         </div>
+        <div style={{ marginBottom: 20 }}>
+          <label style={fl}>지출 항목 <span style={{ color: 'var(--gray4)', fontWeight: 400 }}>(선택)</span></label>
+          <input
+            style={fi} placeholder="예: 버스 대여비"
+            value={itemName} onChange={e => setItemName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && startBiz()}
+          />
+          <div style={{ fontSize: 11, color: 'var(--gray4)', marginTop: 5, lineHeight: 1.5 }}>
+            입력 시 AI가 내용·특이사항을 더 정확하게 생성합니다
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setNewBizOpen(false)} style={{ flex: 1, background: 'var(--gray2)', color: 'var(--gray5)', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
+          <button onClick={() => { setNewBizOpen(false); setBizName(''); setItemName(''); }} style={{ flex: 1, background: 'var(--gray2)', color: 'var(--gray5)', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
           <button onClick={startBiz} disabled={!bizName.trim()} style={{ flex: 1, background: 'var(--navy)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: !bizName.trim() ? 0.5 : 1 }}>시작</button>
         </div>
       </Modal>

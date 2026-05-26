@@ -39,6 +39,10 @@ export default function ReceiptScreen() {
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  React.useEffect(() => {
+    sessionStorage.setItem('lastStep', '1');
+  }, []);
+
   const handlePicked = (picked: FileList | null) => {
     if (!picked) return;
     const arr = Array.from(picked).map(f => ({ file: f, ext: getExt(f.name), size: f.size }));

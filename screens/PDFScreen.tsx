@@ -33,6 +33,7 @@ export default function PDFScreen() {
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    sessionStorage.setItem('lastStep', '5');
     const name = sessionStorage.getItem('formName');
     if (name) setFormName(name);
 

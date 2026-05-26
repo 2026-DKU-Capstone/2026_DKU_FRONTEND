@@ -24,6 +24,7 @@ export default function DocReviewScreen() {
   const [finalCheckOpen, setFinalCheckOpen] = useState(false);
 
   useEffect(() => {
+    sessionStorage.setItem('lastStep', '3');
     const filledRaw = sessionStorage.getItem('filledFields');
     const missingRaw = sessionStorage.getItem('missingFields');
     const userInputRaw = sessionStorage.getItem('userInputFields');

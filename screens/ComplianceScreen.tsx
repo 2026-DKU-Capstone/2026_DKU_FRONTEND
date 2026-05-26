@@ -119,6 +119,13 @@ export default function ComplianceScreen() {
   }, 0);
   const showSum = rows.some(r => /금액|비$|료$/.test(r.key));
 
+  const isLedger = formName.includes('수입지출관리대장');
+  const ledgerCols = isLedger ? rows.map(r => ({
+    key: r.key,
+    values: r.value.split(',').map(v => v.trim()),
+  })) : [];
+  const ledgerRowCount = ledgerCols.length > 0 ? Math.max(...ledgerCols.map(c => c.values.length)) : 0;
+
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: '1fr 360px',
@@ -150,7 +157,39 @@ export default function ComplianceScreen() {
             paddingBottom: 12, marginBottom: 16,
           }}>{formName}</div>
 
-          {Array.from({ length: Math.ceil(rows.length / 2) }).map((_, idx) => {
+          {isLedger ? (
+            <>
+              <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: 'var(--navy)' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--gray1)' }}>
+                      <th style={{ padding: '7px 10px', fontWeight: 600, color: 'var(--gray4)', fontSize: 10, borderBottom: '2px solid var(--navy)', borderRight: '1px solid var(--gray2)', textAlign: 'center' }}>번호</th>
+                      {ledgerCols.map(c => (
+                        <th key={c.key} style={{ padding: '7px 10px', fontWeight: 600, color: 'var(--gray4)', fontSize: 10, borderBottom: '2px solid var(--navy)', borderRight: '1px solid var(--gray2)', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {c.key}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: ledgerRowCount }).map((_, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--gray2)', background: i % 2 === 0 ? '#fff' : 'var(--gray1)' }}>
+                        <td style={{ padding: '7px 10px', textAlign: 'center', color: 'var(--gray4)', fontSize: 10, borderRight: '1px solid var(--gray2)' }}>{i + 1}</td>
+                        {ledgerCols.map(c => {
+                          const val = c.values[i] ?? '';
+                          return (
+                            <td key={c.key} style={{ padding: '7px 10px', textAlign: /금액|잔액/.test(c.key) ? 'right' : 'center', color: val ? 'var(--navy)' : 'var(--gray3)', fontFamily: /금액|잔액/.test(c.key) ? 'var(--font-mono)' : 'inherit', borderRight: '1px solid var(--gray2)', fontSize: 11 }}>
+                              {val || '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : Array.from({ length: Math.ceil(rows.length / 2) }).map((_, idx) => {
             const left = rows[idx * 2];
             const right = rows[idx * 2 + 1];
             return (
@@ -211,7 +250,7 @@ export default function ComplianceScreen() {
             );
           })}
 
-          {showSum && (
+          {showSum && !isLedger && (
             <div style={{ display: 'flex', background: 'var(--navy)' }}>
               <div style={{
                 width: 100, padding: '8px 10px', fontWeight: 600,

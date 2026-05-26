@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -92,14 +92,14 @@ export default function ExpenseBoardScreen() {
   const visible = items.filter(i => i.status === 'draft' || i.status === 'approved');
 
   function handleDraftClick(item: EvidenceItem) {
-    const storedEvidenceId = sessionStorage.getItem('evidenceId');
-    const lastStep = sessionStorage.getItem('lastStep');
+    const storedEvidenceId = localStorage.getItem('evidenceId');
+    const lastStep = localStorage.getItem('lastStep');
     if (storedEvidenceId === String(item.evidenceId) && lastStep && LAST_STEP_ROUTES[lastStep]) {
       router.push(LAST_STEP_ROUTES[lastStep]);
     } else {
-      // sessionStorage 데이터 없거나 다른 증빙 → 처음부터
-      sessionStorage.setItem('evidenceId', String(item.evidenceId));
-      if (item.businessName) sessionStorage.setItem('currentBusinessName', item.businessName);
+      // localStorage 데이터 없거나 다른 증빙 → 처음부터
+      localStorage.setItem('evidenceId', String(item.evidenceId));
+      if (item.businessName) localStorage.setItem('currentBusinessName', item.businessName);
       router.push('/receipt');
     }
   }
@@ -155,11 +155,11 @@ export default function ExpenseBoardScreen() {
 
   function startBiz() {
     if (!bizName.trim()) return;
-    sessionStorage.setItem('currentBusinessName', bizName.trim());
+    localStorage.setItem('currentBusinessName', bizName.trim());
     if (itemName.trim()) {
-      sessionStorage.setItem('currentItemName', itemName.trim());
+      localStorage.setItem('currentItemName', itemName.trim());
     } else {
-      sessionStorage.removeItem('currentItemName');
+      localStorage.removeItem('currentItemName');
     }
     setNewBizOpen(false);
     setBizName('');

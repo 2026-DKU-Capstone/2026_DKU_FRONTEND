@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -40,12 +40,12 @@ export default function PDFScreen() {
   const [queuePos, setQueuePos] = useState<{ index: number; total: number } | null>(null);
 
   useEffect(() => {
-    sessionStorage.setItem('lastStep', '5');
-    const name = sessionStorage.getItem('formName');
+    localStorage.setItem('lastStep', '5');
+    const name = localStorage.getItem('formName');
     if (name) setFormName(name);
 
-    const filledRaw = sessionStorage.getItem('filledFields');
-    const userInputRaw = sessionStorage.getItem('userInputFields');
+    const filledRaw = localStorage.getItem('filledFields');
+    const userInputRaw = localStorage.getItem('userInputFields');
     const filled: Record<string, string> = filledRaw ? JSON.parse(filledRaw) : {};
     const userInput: Record<string, string> = userInputRaw ? JSON.parse(userInputRaw) : {};
     const merged = { ...filled, ...userInput };
@@ -57,21 +57,21 @@ export default function PDFScreen() {
     }, 0);
     setTotalAmount(total);
 
-    const evidenceId = sessionStorage.getItem('evidenceId');
+    const evidenceId = localStorage.getItem('evidenceId');
     if (evidenceId) setDocNumber(`#${new Date().getFullYear()}-${evidenceId.padStart(4, '0')}`);
 
     // #3 연속 작성: 여러 건 업로드한 경우 큐 내 현재 위치 파악
     try {
-      const q = JSON.parse(sessionStorage.getItem('evidenceQueue') ?? '[]');
-      const idx = parseInt(sessionStorage.getItem('queueIndex') ?? '0', 10);
+      const q = JSON.parse(localStorage.getItem('evidenceQueue') ?? '[]');
+      const idx = parseInt(localStorage.getItem('queueIndex') ?? '0', 10);
       if (Array.isArray(q) && q.length > 1) setQueuePos({ index: idx, total: q.length });
     } catch { /* 무시 */ }
   }, []);
 
   async function handleDownload() {
-    const evidenceId = sessionStorage.getItem('evidenceId');
-    const formId = sessionStorage.getItem('formId');
-    const filledFieldsRaw = sessionStorage.getItem('filledFields');
+    const evidenceId = localStorage.getItem('evidenceId');
+    const formId = localStorage.getItem('formId');
+    const filledFieldsRaw = localStorage.getItem('filledFields');
 
     if (!evidenceId || !formId) {
       setError('증빙 정보가 없습니다. 처음부터 다시 진행해 주세요.');
@@ -81,7 +81,7 @@ export default function PDFScreen() {
     setDownloading(true); setError('');
     try {
       const filledFields: Record<string, string> = filledFieldsRaw ? JSON.parse(filledFieldsRaw) : {};
-      const userInputFieldsRaw = sessionStorage.getItem('userInputFields');
+      const userInputFieldsRaw = localStorage.getItem('userInputFields');
       const userInputFields: Record<string, string> = userInputFieldsRaw ? JSON.parse(userInputFieldsRaw) : {};
       // 증빙서류 자체를 사진란에 자동 부착.
       // - 백엔드 resolveImageBytes는 source="evidence"를 evidence 파일 바이트로 로드.
@@ -92,7 +92,7 @@ export default function PDFScreen() {
       photos.forEach(p => { imageFields[p.label] = p.filePath; });
       // doc-review에서 올린 학생증을 양식의 '학생증 부착' 란에 부착 (영수증 부착과 동일 방식)
       try {
-        const scRaw = sessionStorage.getItem('studentCardPhoto');
+        const scRaw = localStorage.getItem('studentCardPhoto');
         if (scRaw) {
           const sc: { label?: string; filePath?: string } = JSON.parse(scRaw);
           if (sc.filePath) imageFields[sc.label || '학생증'] = sc.filePath;
@@ -113,10 +113,10 @@ export default function PDFScreen() {
   }
 
   async function handleSubmit() {
-    const evidenceId = sessionStorage.getItem('evidenceId');
-    const formId = sessionStorage.getItem('formId');
-    const filledFieldsRaw = sessionStorage.getItem('filledFields');
-    const userInputFieldsRaw = sessionStorage.getItem('userInputFields');
+    const evidenceId = localStorage.getItem('evidenceId');
+    const formId = localStorage.getItem('formId');
+    const filledFieldsRaw = localStorage.getItem('filledFields');
+    const userInputFieldsRaw = localStorage.getItem('userInputFields');
     const groupId = getGroupId();
 
     if (!evidenceId || !formId || !groupId) {
@@ -143,7 +143,7 @@ export default function PDFScreen() {
       if (res.ok) {
         const data = await res.json().catch(() => null);
         ['evidenceId', 'availableForms', 'filledFields', 'formId', 'lastStep'].forEach(
-          key => sessionStorage.removeItem(key)
+          key => localStorage.removeItem(key)
         );
         setSubmitted(true);
         if (data?.requestId) setSubmittedRequestId(data.requestId);
@@ -187,23 +187,23 @@ export default function PDFScreen() {
   function startNewDocument() {
     ['evidenceId', 'availableForms', 'formId', 'formName', 'filledFields', 'missingFields',
      'userInputFields', 'selectedFormIds', 'evidenceQueue', 'queueIndex', 'studentCardPhoto']
-      .forEach(k => sessionStorage.removeItem(k));
+      .forEach(k => localStorage.removeItem(k));
     router.push('/receipt');
   }
 
   // #3 연속 작성: 업로드한 다음 증빙으로 이어서 진행 (영수증 재선택 없이 양식 추천부터)
   function goToNextInQueue() {
     try {
-      const q = JSON.parse(sessionStorage.getItem('evidenceQueue') ?? '[]');
-      const idx = parseInt(sessionStorage.getItem('queueIndex') ?? '0', 10);
+      const q = JSON.parse(localStorage.getItem('evidenceQueue') ?? '[]');
+      const idx = parseInt(localStorage.getItem('queueIndex') ?? '0', 10);
       const next = idx + 1;
       if (!Array.isArray(q) || next >= q.length) return;
       // 다음 증빙으로 전환 + 현재 문서 작성 상태 초기화 (사업명·그룹·큐는 유지)
-      sessionStorage.setItem('queueIndex', String(next));
-      sessionStorage.setItem('evidenceId', String(q[next].evidenceId));
-      sessionStorage.setItem('availableForms', JSON.stringify(q[next].availableForms));
+      localStorage.setItem('queueIndex', String(next));
+      localStorage.setItem('evidenceId', String(q[next].evidenceId));
+      localStorage.setItem('availableForms', JSON.stringify(q[next].availableForms));
       ['formId', 'formName', 'filledFields', 'missingFields', 'userInputFields', 'selectedFormIds', 'studentCardPhoto']
-        .forEach(k => sessionStorage.removeItem(k));
+        .forEach(k => localStorage.removeItem(k));
       router.push('/form-recommend');
     } catch { /* 무시 */ }
   }

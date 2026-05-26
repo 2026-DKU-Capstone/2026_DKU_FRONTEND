@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -24,11 +24,11 @@ export default function DocReviewScreen() {
   const [finalCheckOpen, setFinalCheckOpen] = useState(false);
 
   useEffect(() => {
-    sessionStorage.setItem('lastStep', '3');
-    const filledRaw = sessionStorage.getItem('filledFields');
-    const missingRaw = sessionStorage.getItem('missingFields');
-    const userInputRaw = sessionStorage.getItem('userInputFields');
-    const name = sessionStorage.getItem('formName');
+    localStorage.setItem('lastStep', '3');
+    const filledRaw = localStorage.getItem('filledFields');
+    const missingRaw = localStorage.getItem('missingFields');
+    const userInputRaw = localStorage.getItem('userInputFields');
+    const name = localStorage.getItem('formName');
     if (name) setFormName(name);
 
     const filled: Record<string, string> = filledRaw ? JSON.parse(filledRaw) : {};
@@ -87,9 +87,9 @@ export default function DocReviewScreen() {
     // user input fields 저장 (filledFields 도 사용자가 수정 시 user override 로 분류)
     const updated: Record<string, string> = {};
     rows.forEach(r => { updated[r.key] = r.key === editingKey ? editValue : r.value; });
-    const userInput = JSON.parse(sessionStorage.getItem('userInputFields') ?? '{}');
+    const userInput = JSON.parse(localStorage.getItem('userInputFields') ?? '{}');
     userInput[editingKey] = editValue;
-    sessionStorage.setItem('userInputFields', JSON.stringify(userInput));
+    localStorage.setItem('userInputFields', JSON.stringify(userInput));
     setEditingKey(null);
   }
 

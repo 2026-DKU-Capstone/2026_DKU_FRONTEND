@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -15,6 +15,7 @@ interface EvidenceItem {
   businessName: string;
   status: EvidenceStatus;
   fileType: string | null;
+  formName: string | null;
   updatedAt: string | null;
   createdAt: string | null;
 }
@@ -60,6 +61,9 @@ export default function ExpenseBoardScreen() {
   const [bizName, setBizName] = useState('');
   const [itemName, setItemName] = useState('');
 
+  // 양식지 필터
+  const [formFilter, setFormFilter] = useState<string | null>(null);
+
   // 완료 상세 모달
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -68,9 +72,13 @@ export default function ExpenseBoardScreen() {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
-  // 삭제 확인 모달
+  // 개별 삭제
   const [deleteTarget, setDeleteTarget] = useState<EvidenceItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // 전체 삭제
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     const groupId = getGroupId();
@@ -99,6 +107,12 @@ export default function ExpenseBoardScreen() {
     }
     return Array.from(byId.values());
   })();
+
+  // 양식지 필터 탭 목록 (formName 있는 항목에서만 추출)
+  const formNames = Array.from(new Set(visible.filter(i => i.formName).map(i => i.formName!)));
+
+  // 현재 필터에 맞는 항목
+  const displayed = formFilter ? visible.filter(i => i.formName === formFilter) : visible;
 
   async function handleDraftClick(item: EvidenceItem) {
     // 증빙별로 저장된 스냅샷이 있으면 해당 단계로 복귀
@@ -186,7 +200,6 @@ export default function ExpenseBoardScreen() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      // 작성중(draft)은 evidence 삭제, 완료(approved)는 approval 삭제
       const url = deleteTarget.requestId
         ? `/api/approvals/${deleteTarget.requestId}`
         : `/api/evidence/${deleteTarget.evidenceId}`;
@@ -200,6 +213,25 @@ export default function ExpenseBoardScreen() {
       }
     } catch { alert('서버에 연결할 수 없습니다.'); }
     finally { setDeleting(false); }
+  }
+
+  async function handleDeleteAll() {
+    setDeletingAll(true);
+    const targets = displayed;
+    const failed: number[] = [];
+    for (const item of targets) {
+      try {
+        const url = item.requestId
+          ? `/api/approvals/${item.requestId}`
+          : `/api/evidence/${item.evidenceId}`;
+        const res = await apiFetch(url, { method: 'DELETE' });
+        if (!res.ok && res.status !== 204) failed.push(item.evidenceId);
+      } catch { failed.push(item.evidenceId); }
+    }
+    setItems(prev => prev.filter(i => failed.includes(i.evidenceId) || !targets.find(t => t.evidenceId === i.evidenceId)));
+    setDeleteAllOpen(false);
+    setDeletingAll(false);
+    if (failed.length > 0) alert(`${failed.length}건 삭제에 실패했습니다.`);
   }
 
   function startBiz() {
@@ -232,20 +264,60 @@ export default function ExpenseBoardScreen() {
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>지출결의</div>
           <div style={{ fontSize: 13, color: 'var(--gray4)' }}>작성 중이거나 완료된 지출결의를 관리합니다</div>
         </div>
-        <button
-          onClick={() => setNewBizOpen(true)}
-          style={{
-            background: 'var(--navy)', color: '#fff', border: 'none',
-            borderRadius: 6, padding: '9px 20px',
-            fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >+ 새 지출결의</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {displayed.length > 0 && (
+            <button
+              onClick={() => setDeleteAllOpen(true)}
+              style={{
+                background: 'transparent', color: 'var(--red)',
+                border: '1px solid var(--red)', borderRadius: 6,
+                padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >전체 삭제</button>
+          )}
+          <button
+            onClick={() => setNewBizOpen(true)}
+            style={{
+              background: 'var(--navy)', color: '#fff', border: 'none',
+              borderRadius: 6, padding: '9px 20px',
+              fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >+ 새 지출결의</button>
+        </div>
       </div>
+
+      {/* 양식지 필터 탭 */}
+      {formNames.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setFormFilter(null)}
+            style={{
+              padding: '5px 14px', borderRadius: 100, fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'inherit', border: 'none',
+              background: formFilter === null ? 'var(--navy)' : 'var(--gray2)',
+              color: formFilter === null ? '#fff' : 'var(--gray5)',
+            }}
+          >전체</button>
+          {formNames.map(name => (
+            <button
+              key={name}
+              onClick={() => setFormFilter(name)}
+              style={{
+                padding: '5px 14px', borderRadius: 100, fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit', border: 'none',
+                background: formFilter === name ? 'var(--navy)' : 'var(--gray2)',
+                color: formFilter === name ? '#fff' : 'var(--gray5)',
+              }}
+            >{name}</button>
+          ))}
+        </div>
+      )}
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid var(--gray2)', overflow: 'hidden' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '60px 1fr 120px 100px 50px',
+          gridTemplateColumns: '60px 1fr 120px 120px 100px 50px',
           alignItems: 'center', gap: 12,
           padding: '14px 20px',
           borderBottom: '1px solid var(--gray1)',
@@ -255,6 +327,7 @@ export default function ExpenseBoardScreen() {
         }}>
           <div>번호</div>
           <div>사업명</div>
+          <div>양식지</div>
           <div>상태</div>
           <div>최근 수정</div>
           <div></div>
@@ -264,11 +337,11 @@ export default function ExpenseBoardScreen() {
           <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--gray4)' }}>
             불러오는 중...
           </div>
-        ) : visible.length === 0 ? (
+        ) : displayed.length === 0 ? (
           <div style={{ padding: '32px 20px', textAlign: 'center', fontSize: 13, color: 'var(--gray4)' }}>
-            등록된 지출결의가 없습니다. 새 지출결의를 시작해 보세요.
+            {formFilter ? `'${formFilter}' 양식지로 작성된 지출결의가 없습니다.` : '등록된 지출결의가 없습니다. 새 지출결의를 시작해 보세요.'}
           </div>
-        ) : visible.map((item, i) => {
+        ) : displayed.map((item, i) => {
           const isDraft = item.status === 'draft';
           const badgeCfg = isDraft
             ? { label: '작성중', bg: 'var(--amber-bg)', color: 'var(--amber)' }
@@ -279,10 +352,10 @@ export default function ExpenseBoardScreen() {
               onClick={() => isDraft ? handleDraftClick(item) : handleApprovedClick(item)}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '60px 1fr 120px 100px 50px',
+                gridTemplateColumns: '60px 1fr 120px 120px 100px 50px',
                 alignItems: 'center', gap: 12,
                 padding: '14px 20px',
-                borderBottom: i === visible.length - 1 ? 'none' : '1px solid var(--gray1)',
+                borderBottom: i === displayed.length - 1 ? 'none' : '1px solid var(--gray1)',
                 cursor: 'pointer', transition: 'background .12s',
               }}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--blue-pale)')}
@@ -293,6 +366,9 @@ export default function ExpenseBoardScreen() {
               </div>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>
                 {item.businessName || '(사업명 없음)'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--gray5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.formName ?? '—'}
               </div>
               <div>
                 <span style={{
@@ -379,7 +455,6 @@ export default function ExpenseBoardScreen() {
               </div>
             )}
 
-            {/* 필드 테이블 */}
             <div style={{ border: '1px solid var(--gray2)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', padding: '10px 14px', background: 'var(--gray1)', borderBottom: '1px solid var(--gray2)' }}>결재 내용</div>
               <div style={{ maxHeight: 200, overflowY: 'auto' }}>
@@ -392,7 +467,6 @@ export default function ExpenseBoardScreen() {
               </div>
             </div>
 
-            {/* 결재 이력 */}
             <div style={{ border: '1px solid var(--gray2)', borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', padding: '10px 14px', background: 'var(--gray1)', borderBottom: '1px solid var(--gray2)' }}>결재 이력</div>
               {detailData.steps.map((s, i) => (
@@ -415,7 +489,7 @@ export default function ExpenseBoardScreen() {
         ) : null}
       </Modal>
 
-      {/* 삭제 확인 모달 */}
+      {/* 개별 삭제 확인 모달 */}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} width={400}>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>결재 삭제</div>
         <div style={{ fontSize: 13, color: 'var(--gray5)', marginBottom: 20 }}>
@@ -425,6 +499,22 @@ export default function ExpenseBoardScreen() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setDeleteTarget(null)} style={{ flex: 1, background: 'var(--gray2)', color: 'var(--gray5)', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
           <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: deleting ? 0.7 : 1 }}>{deleting ? '삭제 중...' : '삭제'}</button>
+        </div>
+      </Modal>
+
+      {/* 전체 삭제 확인 모달 */}
+      <Modal open={deleteAllOpen} onClose={() => setDeleteAllOpen(false)} width={400}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>전체 삭제</div>
+        <div style={{ fontSize: 13, color: 'var(--gray5)', marginBottom: 20 }}>
+          {formFilter
+            ? <><strong style={{ color: 'var(--navy)' }}>{formFilter}</strong> 양식지의 지출결의 {displayed.length}건을 모두 삭제합니다.</>
+            : <>현재 목록의 지출결의 <strong style={{ color: 'var(--navy)' }}>{displayed.length}건</strong>을 모두 삭제합니다.</>
+          }<br />
+          이 작업은 되돌릴 수 없습니다.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setDeleteAllOpen(false)} style={{ flex: 1, background: 'var(--gray2)', color: 'var(--gray5)', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>취소</button>
+          <button onClick={handleDeleteAll} disabled={deletingAll} style={{ flex: 1, background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: deletingAll ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: deletingAll ? 0.7 : 1 }}>{deletingAll ? '삭제 중...' : '전체 삭제'}</button>
         </div>
       </Modal>
     </div>

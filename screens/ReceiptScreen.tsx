@@ -78,6 +78,11 @@ export default function ReceiptScreen() {
         const data: { evidenceId: number; paymentType: string; extractedText: string; availableForms: AvailableForm[] } = await res.json();
         queue.push({ evidenceId: data.evidenceId, availableForms: data.availableForms, fileName: files[i].file.name });
       }
+      // 새 분석 배치 시작 — 이전 문서의 학생증/입력값 캐시 제거.
+      // (수령인은 문서마다 새 학생증을 받아야 하므로, 직전 문서의 studentCardPhoto·userInputFields가
+      //  남아 수령인 필드가 '이미 채워짐'으로 보여 업로드가 생략되는 것을 막는다.)
+      ['studentCardPhoto', 'userInputFields', 'missingFields', 'filledFields', 'formId', 'formName', 'selectedFormIds']
+        .forEach(k => sessionStorage.removeItem(k));
       // 큐 저장 + 첫 번째 증빙으로 시작
       sessionStorage.setItem('evidenceQueue', JSON.stringify(queue));
       sessionStorage.setItem('queueIndex', '0');

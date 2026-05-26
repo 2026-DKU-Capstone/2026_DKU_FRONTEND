@@ -30,6 +30,18 @@ export default function DocReviewScreen() {
     const userInputRaw = localStorage.getItem('userInputFields');
     const name = localStorage.getItem('formName');
     if (name) setFormName(name);
+    // 증빙별 스냅샷 업데이트
+    const evidenceId = localStorage.getItem('evidenceId');
+    if (evidenceId) {
+      const existing = JSON.parse(localStorage.getItem(`eid_${evidenceId}`) ?? '{}');
+      existing.lastStep = '3';
+      if (filledRaw) existing.filledFields = filledRaw;
+      if (missingRaw) existing.missingFields = missingRaw;
+      if (userInputRaw) existing.userInputFields = userInputRaw;
+      if (name) existing.formName = name;
+      existing.formId = localStorage.getItem('formId') ?? existing.formId;
+      localStorage.setItem(`eid_${evidenceId}`, JSON.stringify(existing));
+    }
 
     const filled: Record<string, string> = filledRaw ? JSON.parse(filledRaw) : {};
     const missing: string[] = missingRaw ? JSON.parse(missingRaw) : [];

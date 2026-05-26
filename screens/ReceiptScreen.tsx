@@ -94,6 +94,13 @@ export default function ReceiptScreen() {
       localStorage.setItem('queueIndex', '0');
       localStorage.setItem('evidenceId', String(queue[0].evidenceId));
       localStorage.setItem('availableForms', JSON.stringify(queue[0].availableForms));
+      // 증빙별 스냅샷 저장 (큐 전체)
+      queue.forEach(q => {
+        const existing = JSON.parse(localStorage.getItem(`eid_${q.evidenceId}`) ?? '{}');
+        existing.lastStep = '2';
+        existing.availableForms = JSON.stringify(q.availableForms);
+        localStorage.setItem(`eid_${q.evidenceId}`, JSON.stringify(existing));
+      });
       router.push('/form-recommend');
     } catch {
       setError('서버에 연결할 수 없습니다.');

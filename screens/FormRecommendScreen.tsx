@@ -56,6 +56,14 @@ export default function FormRecommendScreen() {
           localStorage.setItem('missingFields', JSON.stringify(first.missingFields));
           localStorage.setItem('formId', String(first.formId));
           localStorage.setItem('formName', first.formName);
+          // 증빙별 스냅샷 저장
+          const existing = JSON.parse(localStorage.getItem(`eid_${evidenceId}`) ?? '{}');
+          existing.lastStep = '3';
+          existing.filledFields = JSON.stringify(first.filledFields);
+          existing.missingFields = JSON.stringify(first.missingFields);
+          existing.formId = String(first.formId);
+          existing.formName = first.formName;
+          localStorage.setItem(`eid_${evidenceId}`, JSON.stringify(existing));
         }
         router.push('/doc-review');
       } else {

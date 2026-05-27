@@ -46,11 +46,7 @@ function deriveTitle(a: Approval): string {
 
 function deriveAmount(a: Approval): string {
   const fields = a.filledFields ?? {};
-  const fieldKeys = Object.keys(fields);
-  const isLedger = (a.formName ?? '').includes('수입지출관리대장') ||
-    (fieldKeys.some(k => k.includes('수입') && k.includes('금액')) &&
-     fieldKeys.some(k => k.includes('지출') && k.includes('금액')));
-  if (isLedger) {
+  if ((a.formName ?? '').includes('수입지출관리대장')) {
     for (const [k, v] of Object.entries(fields)) {
       if (k.includes('지출') && k.includes('금액')) {
         const total = String(v).split(/,\s+/)

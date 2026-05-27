@@ -51,12 +51,8 @@ export default function PDFScreen() {
     const merged = { ...filled, ...userInput };
 
     const currentName = localStorage.getItem('formName') ?? '';
-    const mergedKeys = Object.keys(merged);
-    const isLedger = currentName.includes('수입지출관리대장') ||
-      (mergedKeys.some(k => k.includes('수입') && k.includes('금액')) &&
-       mergedKeys.some(k => k.includes('지출') && k.includes('금액')));
     let total = 0;
-    if (isLedger) {
+    if (currentName.includes('수입지출관리대장')) {
       for (const [k, v] of Object.entries(merged)) {
         if (k.includes('지출') && k.includes('금액')) {
           total = String(v).split(/,\s+/)

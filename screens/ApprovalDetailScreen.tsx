@@ -193,7 +193,10 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
   }
 
   const cfg = STATUS_CFG[data.status];
-  const isLedger = (data.formName ?? '').includes('수입지출관리대장');
+  const filledKeys = Object.keys(data.filledFields);
+  const isLedger = (data.formName ?? '').includes('수입지출관리대장') ||
+    (filledKeys.some(k => k.includes('수입') && k.includes('금액')) &&
+     filledKeys.some(k => k.includes('지출') && k.includes('금액')));
   const fl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--gray5)', marginBottom: 5, display: 'block' };
   const fi: React.CSSProperties = {
     width: '100%', border: '1px solid var(--gray2)', borderRadius: 6,

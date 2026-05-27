@@ -194,6 +194,13 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
 
   const cfg = STATUS_CFG[data.status];
   const isLedger = (data.formName ?? '').includes('수입지출관리대장');
+  const ledgerCols = isLedger
+    ? Object.entries(data.filledFields).map(([key, value]) => ({
+        key,
+        values: value.split(',').map((v: string) => v.trim()),
+      }))
+    : [];
+  const ledgerRowCount = ledgerCols.length > 0 ? Math.max(...ledgerCols.map(c => c.values.length)) : 0;
   const fl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--gray5)', marginBottom: 5, display: 'block' };
   const fi: React.CSSProperties = {
     width: '100%', border: '1px solid var(--gray2)', borderRadius: 6,
@@ -255,43 +262,37 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
                 border: '1px solid #F5C6C6', borderRadius: 6, padding: '8px 12px', marginBottom: 10,
               }}>{saveError}</div>
             )}
-            {isLedger && !canEdit ? (() => {
-              const fields = data.filledFields;
-              const keys = Object.keys(fields);
-              const rowCount = Math.max(...keys.map(k => fields[k].split(/,\s+/).length));
-              return (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        {keys.map(k => (
-                          <th key={k} style={{
-                            padding: '8px 10px', background: 'var(--gray1)', color: 'var(--gray4)',
-                            fontWeight: 600, borderBottom: '1px solid var(--gray2)',
-                            borderRight: '1px solid var(--gray2)', textAlign: 'left', whiteSpace: 'nowrap',
-                          }}>{k}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.from({ length: rowCount }, (_, i) => (
-                        <tr key={i}>
-                          {keys.map(k => {
-                            const parts = fields[k].split(/,\s+/);
-                            return (
-                              <td key={k} style={{
-                                padding: '8px 10px', borderBottom: '1px solid var(--gray2)',
-                                borderRight: '1px solid var(--gray2)', color: 'var(--navy)',
-                              }}>{parts[i] ?? '—'}</td>
-                            );
-                          })}
-                        </tr>
+            {isLedger && !canEdit ? (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: 'var(--navy)' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--gray1)' }}>
+                      <th style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--gray4)', fontSize: 11, borderBottom: '2px solid var(--navy)', borderRight: '1px solid var(--gray2)', textAlign: 'center' }}>번호</th>
+                      {ledgerCols.map(c => (
+                        <th key={c.key} style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--gray4)', fontSize: 11, borderBottom: '2px solid var(--navy)', borderRight: '1px solid var(--gray2)', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {c.key}
+                        </th>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })() : Object.entries(canEdit ? editFields : data.filledFields).map(([k, v]) => (
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: ledgerRowCount }).map((_, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--gray2)', background: i % 2 === 0 ? '#fff' : 'var(--gray1)' }}>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--gray4)', fontSize: 11, borderRight: '1px solid var(--gray2)' }}>{i + 1}</td>
+                        {ledgerCols.map(c => {
+                          const val = c.values[i] ?? '';
+                          return (
+                            <td key={c.key} style={{ padding: '8px 10px', textAlign: /금액|잔액/.test(c.key) ? 'right' : 'center', color: val ? 'var(--navy)' : 'var(--gray3)', fontFamily: /금액|잔액/.test(c.key) ? 'var(--font-mono)' : 'inherit', borderRight: '1px solid var(--gray2)' }}>
+                              {val || '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : Object.entries(canEdit ? editFields : data.filledFields).map(([k, v]) => (
               <div key={k} style={{
                 display: 'flex', borderBottom: '1px solid var(--gray2)', alignItems: 'center',
               }}>

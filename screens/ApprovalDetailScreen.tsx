@@ -193,6 +193,7 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
   }
 
   const cfg = STATUS_CFG[data.status];
+  const isLedger = (data.formName ?? '').includes('수입지출관리대장');
   const fl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--gray5)', marginBottom: 5, display: 'block' };
   const fi: React.CSSProperties = {
     width: '100%', border: '1px solid var(--gray2)', borderRadius: 6,
@@ -254,7 +255,43 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
                 border: '1px solid #F5C6C6', borderRadius: 6, padding: '8px 12px', marginBottom: 10,
               }}>{saveError}</div>
             )}
-            {Object.entries(canEdit ? editFields : data.filledFields).map(([k, v]) => (
+            {isLedger && !canEdit ? (() => {
+              const fields = data.filledFields;
+              const keys = Object.keys(fields);
+              const rowCount = Math.max(...keys.map(k => fields[k].split(',').length));
+              return (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        {keys.map(k => (
+                          <th key={k} style={{
+                            padding: '8px 10px', background: 'var(--gray1)', color: 'var(--gray4)',
+                            fontWeight: 600, borderBottom: '1px solid var(--gray2)',
+                            borderRight: '1px solid var(--gray2)', textAlign: 'left', whiteSpace: 'nowrap',
+                          }}>{k}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: rowCount }, (_, i) => (
+                        <tr key={i}>
+                          {keys.map(k => {
+                            const parts = fields[k].split(',').map((s: string) => s.trim());
+                            return (
+                              <td key={k} style={{
+                                padding: '8px 10px', borderBottom: '1px solid var(--gray2)',
+                                borderRight: '1px solid var(--gray2)', color: 'var(--navy)',
+                              }}>{parts[i] ?? '—'}</td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })() : Object.entries(canEdit ? editFields : data.filledFields).map(([k, v]) => (
               <div key={k} style={{
                 display: 'flex', borderBottom: '1px solid var(--gray2)', alignItems: 'center',
               }}>

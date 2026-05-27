@@ -50,11 +50,24 @@ export default function PDFScreen() {
     const userInput: Record<string, string> = userInputRaw ? JSON.parse(userInputRaw) : {};
     const merged = { ...filled, ...userInput };
 
-    const total = Object.entries(merged).reduce((acc, [k, v]) => {
-      const n = parseInt(String(v).replace(/[^\d-]/g, ''), 10);
-      if (!isNaN(n) && /금액|비$|료$|값$/.test(k)) return acc + n;
-      return acc;
-    }, 0);
+    const currentName = localStorage.getItem('formName') ?? '';
+    let total = 0;
+    if (currentName.includes('수입지출관리대장')) {
+      for (const [k, v] of Object.entries(merged)) {
+        if (k.includes('지출') && k.includes('금액')) {
+          total = String(v).split(',')
+            .map(s => parseInt(s.replace(/[^\d]/g, ''), 10))
+            .filter(n => !isNaN(n) && n > 0)
+            .reduce((acc, n) => acc + n, 0);
+        }
+      }
+    } else {
+      total = Object.entries(merged).reduce((acc, [k, v]) => {
+        const n = parseInt(String(v).replace(/[^\d-]/g, ''), 10);
+        if (!isNaN(n) && /금액|비$|료$|값$/.test(k)) return acc + n;
+        return acc;
+      }, 0);
+    }
     setTotalAmount(total);
 
     const evidenceId = localStorage.getItem('evidenceId');

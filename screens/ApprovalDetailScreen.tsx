@@ -261,7 +261,7 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
             {isLedger && !canEdit ? (() => {
               const fields = data.filledFields;
               const keys = Object.keys(fields);
-              const rowCount = Math.max(...keys.map(k => fields[k].split(',').length));
+              const rowCount = Math.max(...keys.map(k => fields[k].split(/,\s+/).length));
               return (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -280,7 +280,7 @@ export default function ApprovalDetailScreen({ requestId }: Props) {
                       {Array.from({ length: rowCount }, (_, i) => (
                         <tr key={i}>
                           {keys.map(k => {
-                            const parts = fields[k].split(',').map((s: string) => s.trim());
+                            const parts = fields[k].split(/,\s+/);
                             return (
                               <td key={k} style={{
                                 padding: '8px 10px', borderBottom: '1px solid var(--gray2)',

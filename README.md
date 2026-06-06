@@ -92,7 +92,7 @@ npm run lint   # ESLint 검사
 
 ## 관련 레포지토리
 
-- **Backend**: [2026-DKU-Capstone/GAGYEOL_BACKEND](https://github.com/2026-DKU-Capstone/GAGYEOL_BACKEND)
+- **Backend**: [DKU-GAGYEOL/GAGYEOL_BACKEND](https://github.com/DKU-GAGYEOL/GAGYEOL_BACKEND)
 
 ## 팀원
 

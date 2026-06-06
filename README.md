@@ -98,7 +98,7 @@ npm run lint   # ESLint 검사
 
 | 이름 | 역할 | GitHub |
 |------|------|--------|
-| 박세현 | Frontend 팀장 | [@parksehyn](https://github.com/parksehyn) |
-| 안균승 | Frontend | [@LOK-AeGS](https://github.com/LOK-AeGS) |
-| 고동민 | Frontend | [@kodongmin](https://github.com/kodongmin) |
-| 김아름 | Frontend | [@karuem](https://github.com/karuem) |
+| 박세현 | 팀장 | [@parksehyn](https://github.com/parksehyn) |
+| 안균승 | 팀원 | [@LOK-AeGS](https://github.com/LOK-AeGS) |
+| 고동민 | 팀원 | [@kodongmin](https://github.com/kodongmin) |
+| 김아름 | 팀원 | [@karuem](https://github.com/karuem) |
